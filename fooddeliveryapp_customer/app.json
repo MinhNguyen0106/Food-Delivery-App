@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "FoodDeliveryApp",
-    "slug": "FoodDeliveryApp",
+    "name": "fooddeliveryapp_customer",
+    "slug": "fooddeliveryapp_customer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "fooddeliveryapp",
+    "scheme": "fooddeliveryappcustomer",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
