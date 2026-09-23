@@ -1,180 +1,385 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+interface DeliveryItem {
+  delivery_id: number;
+  order_id: number;
+  shipper_id?: number;
+  pickup_address?: string;
+  delivery_address?: string;
+  shipping_fee?: number;
+  total_amount?: number;
+  status?: string; // 'COMPLETED', 'CANCELLED', 'DELIVERING',...
+  created_at?: string;
+}
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
+export default function ExploreScreen() {
+  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [filter, setFilter] = useState<"all" | "completed" | "cancelled">(
+    "all",
+  );
+
+  const fetchDeliveryHistory = async () => {
+    try {
+      // 1. Lấy user_id / shipperId từ AsyncStorage
+      const shipperId = await AsyncStorage.getItem("shipperId");
+      if (!shipperId) {
+        setLoading(false);
+        return;
+      }
+
+      const backendUrl =
+        Platform.OS === "web"
+          ? "http://localhost:3000"
+          : "http://192.168.0.106:3000";
+
+      // 2. Gọi API lấy lịch sử giao hàng theo shipperId
+      const response = await fetch(
+        `${backendUrl}/api/deliveries/shipper/${shipperId}`,
+      );
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setDeliveries(result.data || []);
+      }
+    } catch (error) {
+      console.error("Lỗi khi tải lịch sử giao hàng:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
-  const theme = useTheme();
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
+  // Tự động load dữ liệu mỗi khi người dùng chuyển sang tab Lịch sử
+  useFocusEffect(
+    useCallback(() => {
+      fetchDeliveryHistory();
+    }, []),
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchDeliveryHistory();
+  };
+
+  // 3. Lọc danh sách theo Tab (Xử lý chữ in hoa từ CSDL MySQL)
+  const filteredDeliveries = deliveries.filter((item) => {
+    const itemStatus = item.status?.toUpperCase() || "";
+    if (filter === "completed") return itemStatus === "COMPLETED";
+    if (filter === "cancelled") return itemStatus === "CANCELLED";
+    return true;
   });
 
+  // 4. Thống kê số đơn và tổng thu nhập
+  const completedCount = deliveries.filter(
+    (d) => d.status?.toUpperCase() === "COMPLETED",
+  ).length;
+
+  const totalEarnings = deliveries
+    .filter((d) => d.status?.toUpperCase() === "COMPLETED")
+    .reduce((sum, d) => sum + (Number(d.shipping_fee) || 0), 0);
+
+  const renderOrderItem = ({ item }: { item: DeliveryItem }) => {
+    const isCompleted = item.status?.toUpperCase() === "COMPLETED";
+
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.codeContainer}>
+            <Ionicons name="receipt-outline" size={18} color="#FF5722" />
+            <Text style={styles.orderCode}>
+              Đơn #{item.order_id || item.delivery_id}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: isCompleted ? "#E8F5E9" : "#FFEBEE" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                { color: isCompleted ? "#2E7D32" : "#C62828" },
+              ]}
+            >
+              {isCompleted ? "Hoàn thành" : item.status || "Đã hủy"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.addressSection}>
+          <View style={styles.addressRow}>
+            <Ionicons name="radio-button-on" size={16} color="#FF5722" />
+            <Text style={styles.addressText} numberOfLines={1}>
+              <Text style={styles.boldText}>Lấy:</Text>{" "}
+              {item.pickup_address || "Cửa hàng"}
+            </Text>
+          </View>
+          <View style={styles.addressRow}>
+            <Ionicons name="location" size={16} color="#4CAF50" />
+            <Text style={styles.addressText} numberOfLines={1}>
+              <Text style={styles.boldText}>Giao:</Text>{" "}
+              {item.delivery_address || "Địa chỉ khách"}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.cardFooter}>
+          <Text style={styles.timeText}>
+            {item.created_at
+              ? new Date(item.created_at).toLocaleString("vi-VN")
+              : "Gần đây"}
+          </Text>
+          <View style={styles.priceContainer}>
+            <Text style={styles.shippingFee}>
+              + {(Number(item.shipping_fee) || 0).toLocaleString("vi-VN")}đ
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <SafeAreaView style={styles.container}>
+      {/* Khối thống kê */}
+      <View style={styles.summaryContainer}>
+        <View style={styles.summaryBox}>
+          <Text style={styles.summaryNumber}>{completedCount}</Text>
+          <Text style={styles.summaryLabel}>Đơn thành công</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryBox}>
+          <Text style={[styles.summaryNumber, { color: "#4CAF50" }]}>
+            {totalEarnings.toLocaleString("vi-VN")}đ
+          </Text>
+          <Text style={styles.summaryLabel}>Thu nhập chuyến</Text>
+        </View>
+      </View>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+      {/* Thanh bộ lọc */}
+      <View style={styles.filterContainer}>
+        {(["all", "completed", "cancelled"] as const).map((type) => (
+          <TouchableOpacity
+            key={type}
+            style={[
+              styles.filterBtn,
+              filter === type && styles.filterBtnActive,
+            ]}
+            onPress={() => setFilter(type)}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                filter === type && styles.filterTextActive,
+              ]}
+            >
+              {type === "all"
+                ? "Tất cả"
+                : type === "completed"
+                  ? "Hoàn thành"
+                  : "Đã hủy"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
-
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+      {/* Danh sách giao hàng */}
+      {loading ? (
+        <ActivityIndicator
+          size="large"
+          color="#FF5722"
+          style={{ marginTop: 40 }}
+        />
+      ) : (
+        <FlatList
+          data={filteredDeliveries}
+          keyExtractor={(item) => String(item.delivery_id)}
+          renderItem={renderOrderItem}
+          contentContainerStyle={styles.listPadding}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="document-text-outline" size={48} color="#CCC" />
+              <Text style={styles.emptyText}>
+                Chưa có lịch sử giao hàng nào
+              </Text>
+            </View>
+          }
+        />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F5F5",
+  },
+  summaryContainer: {
+    flexDirection: "row",
+    backgroundColor: "#FFF",
+    margin: 12,
+    paddingVertical: 14,
+    borderRadius: 10,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  summaryBox: {
+    flex: 1,
+    alignItems: "center",
+  },
+  summaryDivider: {
+    width: 1,
+    backgroundColor: "#EEE",
+  },
+  summaryNumber: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#FF5722",
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 2,
+  },
+  filterContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  filterBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: "#E0E0E0",
+    marginRight: 8,
+  },
+  filterBtnActive: {
+    backgroundColor: "#FF5722",
+  },
+  filterText: {
+    fontSize: 13,
+    color: "#424242",
+    fontWeight: "500",
+  },
+  filterTextActive: {
+    color: "#FFF",
+    fontWeight: "bold",
+  },
+  listPadding: {
+    paddingHorizontal: 12,
+    paddingBottom: 20,
+  },
+  card: {
+    backgroundColor: "#FFF",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  codeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  orderCode: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#333",
+    marginLeft: 6,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#F0F0F0",
+    marginVertical: 10,
+  },
+  addressSection: {
+    gap: 6,
+  },
+  addressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addressText: {
+    fontSize: 13,
+    color: "#555",
+    marginLeft: 8,
     flex: 1,
   },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  boldText: {
+    fontWeight: "600",
+    color: "#333",
   },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
+  timeText: {
+    fontSize: 12,
+    color: "#888",
   },
-  centerText: {
-    textAlign: 'center',
+  priceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  pressed: {
-    opacity: 0.7,
+  shippingFee: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#4CAF50",
   },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 60,
   },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+  emptyText: {
+    marginTop: 8,
+    color: "#888",
+    fontSize: 14,
   },
 });
