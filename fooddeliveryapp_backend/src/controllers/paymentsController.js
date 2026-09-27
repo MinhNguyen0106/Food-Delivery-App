@@ -7,7 +7,7 @@ exports.getAll = (req, res) => {
             return res.status(500).json({
                 success: false,
                 message: 'Lỗi khi lấy danh sách dữ liệu',
-                error: err.message
+                error: 'DATABASE_ERROR'
             });
         }
 
@@ -27,7 +27,7 @@ exports.getById = (req, res) => {
             return res.status(500).json({
                 success: false,
                 message: 'Lỗi khi lấy dữ liệu',
-                error: err.message
+                error: 'DATABASE_ERROR'
             });
         }
 
@@ -54,7 +54,7 @@ exports.create = (req, res) => {
             return res.status(500).json({
                 success: false,
                 message: 'Lỗi khi thêm dữ liệu',
-                error: err.message
+                error: 'DATABASE_ERROR'
             });
         }
 
@@ -76,7 +76,7 @@ exports.update = (req, res) => {
             return res.status(500).json({
                 success: false,
                 message: 'Lỗi khi cập nhật dữ liệu',
-                error: err.message
+                error: 'DATABASE_ERROR'
             });
         }
 
@@ -103,7 +103,7 @@ exports.delete = (req, res) => {
             return res.status(500).json({
                 success: false,
                 message: 'Lỗi khi xóa dữ liệu',
-                error: err.message
+                error: 'DATABASE_ERROR'
             });
         }
 
