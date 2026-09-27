@@ -7,7 +7,8 @@ import type {
 
 export const restaurantVoucherService = {
   list: async () => unwrapResponse<Voucher[]>(await apiClient.get("/vouchers")),
-  getById: async (id: number) => unwrapResponse<Voucher>(await apiClient.get(`/vouchers/${id}`)),
+  getById: async (id: number) =>
+    unwrapResponse<Voucher>(await apiClient.get(`/vouchers/${id}`)),
   create: async (payload: CreateVoucherPayload) =>
     unwrapResponse<undefined>(await apiClient.post("/vouchers", payload)),
   update: async (id: number, payload: UpdateVoucherPayload) =>

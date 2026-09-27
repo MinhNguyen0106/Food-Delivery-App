@@ -11,6 +11,8 @@ app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use('/api/auth', require('./router/authRouter'));
+app.use('/api', require('./router/catalogRouter'));
+app.use('/api/addresses', require('./router/addressRouter'));
 
 function mountResource(resource) {
     app.use(
@@ -22,16 +24,13 @@ function mountResource(resource) {
 }
 
 [
-    'addresses',
     'admins',
     'cart_items',
     'carts',
-    'categories',
     'customer_profiles',
     'customers',
     'deliveries',
     'food_statuses',
-    'foods',
     'order_details',
     'order_status_history',
     'order_statuses',
