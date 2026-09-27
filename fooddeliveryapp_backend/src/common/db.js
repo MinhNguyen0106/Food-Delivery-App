@@ -1,8 +1,11 @@
 const mysql = require("mysql2");
+const { db: dbConfig } = require("../config/env");
+
 const db = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "Huong4536@",
-  database: "food_delivery_app",
+  ...dbConfig,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
+
 module.exports = db;
