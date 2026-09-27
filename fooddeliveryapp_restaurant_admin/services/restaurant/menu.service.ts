@@ -10,7 +10,8 @@ import type {
 
 export const restaurantMenuService = {
   listFoods: async () => unwrapResponse<Food[]>(await apiClient.get("/foods")),
-  getFood: async (id: number) => unwrapResponse<Food>(await apiClient.get(`/foods/${id}`)),
+  getFood: async (id: number) =>
+    unwrapResponse<Food>(await apiClient.get(`/foods/${id}`)),
   createFood: async (payload: CreateFoodPayload) =>
     unwrapResponse<undefined>(await apiClient.post("/foods", payload)),
   updateFood: async (id: number, payload: UpdateFoodPayload) =>
@@ -24,7 +25,9 @@ export const restaurantMenuService = {
   createCategory: async (payload: CreateCategoryPayload) =>
     unwrapResponse<undefined>(await apiClient.post("/categories", payload)),
   updateCategory: async (id: number, payload: UpdateCategoryPayload) =>
-    unwrapResponse<undefined>(await apiClient.put(`/categories/${id}`, payload)),
+    unwrapResponse<undefined>(
+      await apiClient.put(`/categories/${id}`, payload),
+    ),
   removeCategory: async (id: number) =>
     unwrapResponse<undefined>(await apiClient.delete(`/categories/${id}`)),
 };
