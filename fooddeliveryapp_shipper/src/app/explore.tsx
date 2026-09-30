@@ -2,11 +2,11 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
+import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Platform,
   RefreshControl,
   SafeAreaView,
   StyleSheet,
@@ -14,13 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// =====================================================
-// BASE URL
-// =====================================================
-
-const BASE_URL =
-  Platform.OS === "web" ? "http://localhost:3000" : "http://192.168.0.106:3000";
 
 // =====================================================
 // TYPE
@@ -36,11 +29,11 @@ interface DeliveryItem {
   restaurant_name?: string | null;
   restaurant_phone?: string | null;
 
-  pickup_address?: string | null;
+  restaurant_address?: string | null;
 
   receiver_name?: string | null;
   receiver_phone?: string | null;
-  delivery_address?: string | null;
+  full_address?: string | null;
 
   subtotal?: number | null;
   delivery_fee?: number | null;
@@ -117,26 +110,6 @@ export default function ExploreScreen() {
     try {
       console.log("====================================");
       console.log("FETCH DELIVERY HISTORY");
-      console.log("BASE_URL:", BASE_URL);
-
-      // -----------------------------------------------
-      // Lấy shipperId
-      // -----------------------------------------------
-
-      const shipperId = await AsyncStorage.getItem("shipperId");
-
-      console.log("shipperId:", shipperId);
-
-      if (!shipperId) {
-        console.log("Không tìm thấy shipperId.");
-
-        setDeliveries([]);
-        setLoading(false);
-        setRefreshing(false);
-
-        return;
-      }
-
       // -----------------------------------------------
       // Lấy JWT
       // -----------------------------------------------
@@ -162,7 +135,7 @@ export default function ExploreScreen() {
       // Gọi API
       // -----------------------------------------------
 
-      const url = `${BASE_URL}/api/deliveries/shipper/${shipperId}`;
+      const url = `${API_BASE_URL}/api/deliveries/history`;
 
       console.log("URL:", url);
 
@@ -414,7 +387,7 @@ export default function ExploreScreen() {
 
             <Text style={styles.addressText} numberOfLines={2}>
               <Text style={styles.boldText}>Lấy hàng: </Text>
-              {item.pickup_address || "Chưa có địa chỉ lấy hàng"}
+              {item.restaurant_address || "Chưa có địa chỉ lấy hàng"}
             </Text>
           </View>
 
@@ -429,7 +402,7 @@ export default function ExploreScreen() {
 
             <Text style={styles.addressText} numberOfLines={2}>
               <Text style={styles.boldText}>Giao hàng: </Text>
-              {item.delivery_address || "Chưa có địa chỉ giao hàng"}
+              {item.full_address || "Chưa có địa chỉ giao hàng"}
             </Text>
           </View>
         </View>

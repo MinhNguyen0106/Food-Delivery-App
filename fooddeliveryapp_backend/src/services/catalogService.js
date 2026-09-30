@@ -1,6 +1,7 @@
 const AppError = require('./AppError');
 const model = require('../models/catalogModel');
 const db = require('../common/db').promise();
+const imageStorage = require('./imageStorageService');
 
 function databaseError(error) {
   if (error.code === 'ER_DUP_ENTRY') {
@@ -35,6 +36,154 @@ async function inTransaction(work) {
   } finally {
     connection.release();
   }
+}
+
+function requireImageManager(entity, id, actor) {
+  if (entity === 'restaurant') {
+    if (actor?.role === 'ADMIN') return;
+    if (
+      actor?.role !== 'RESTAURANT' ||
+      Number(actor.restaurantId) !== Number(id) ||
+      !Number.isSafeInteger(Number(actor.userId))
+    ) {
+      throw new AppError('You cannot manage this Restaurant image', 403, 'FORBIDDEN');
+    }
+    return;
+  }
+  if (
+    entity === 'food' &&
+    actor?.role === 'RESTAURANT' &&
+    Number.isSafeInteger(Number(actor.restaurantId)) &&
+    Number(actor.restaurantId) > 0
+  ) {
+    return;
+  }
+  throw new AppError('You cannot manage this image', 403, 'FORBIDDEN');
+}
+
+async function deleteStoredImageSafely(imagePath, entity) {
+  if (!imagePath) return;
+  try {
+    await imageStorage.deleteImage(imagePath, entity);
+  } catch (error) {
+    console.error('Old image cleanup failed', {
+      entity,
+      code: error.code || error.name,
+    });
+  }
+}
+
+async function removeNewImageSafely(imagePath, entity) {
+  if (!imagePath) return;
+  try {
+    await imageStorage.deleteImage(imagePath, entity);
+  } catch (error) {
+    console.error('New image cleanup failed', {
+      entity,
+      code: error.code || error.name,
+    });
+  }
+}
+
+async function updateImage(entity, id, file, actor) {
+  requireImageManager(entity, id, actor);
+  imageStorage.validateImage(file);
+
+  const initial = entity === 'restaurant'
+    ? await model.getRestaurantImage(db, id)
+    : await model.getFoodImage(db, id);
+  if (!initial) {
+    throw new AppError(`${entity === 'food' ? 'Food' : 'Restaurant'} not found`, 404, 'NOT_FOUND');
+  }
+  if (entity === 'restaurant') {
+    requireImageManager(entity, id, actor);
+    if (actor.role === 'RESTAURANT' && Number(initial.user_id) !== Number(actor.userId)) {
+      throw new AppError('You cannot manage this Restaurant image', 403, 'FORBIDDEN');
+    }
+  } else if (Number(initial.restaurant_id) !== Number(actor.restaurantId)) {
+    throw new AppError('Food not found', 404, 'NOT_FOUND');
+  }
+
+  const stored = await imageStorage.saveImage(`${entity}s`, file);
+  let connection;
+  let committed = false;
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    const current = entity === 'restaurant'
+      ? await model.lockRestaurantImage(connection, id)
+      : await model.lockFoodImage(connection, id);
+    if (!current) {
+      throw new AppError(`${entity === 'food' ? 'Food' : 'Restaurant'} not found`, 404, 'NOT_FOUND');
+    }
+    if (entity === 'restaurant') {
+      if (actor.role === 'RESTAURANT' && Number(current.user_id) !== Number(actor.userId)) {
+        throw new AppError('You cannot manage this Restaurant image', 403, 'FORBIDDEN');
+      }
+    } else if (Number(current.restaurant_id) !== Number(actor.restaurantId)) {
+      throw new AppError('Food not found', 404, 'NOT_FOUND');
+    }
+
+    const affectedRows = entity === 'restaurant'
+      ? await model.updateRestaurantImage(connection, id, stored.path)
+      : await model.updateFoodImage(connection, id, actor.restaurantId, stored.path);
+    if (affectedRows !== 1) {
+      throw new AppError('Image could not be associated with the resource', 409, 'IMAGE_UPDATE_CONFLICT');
+    }
+    await connection.commit();
+    committed = true;
+    await deleteStoredImageSafely(current.image, `${entity}s`);
+    return { image: stored.path };
+  } catch (error) {
+    if (!committed) {
+      if (connection) {
+        try {
+          await connection.rollback();
+        } catch (rollbackError) {
+          console.error('Image update rollback failed', {
+            entity,
+            code: rollbackError.code || rollbackError.name,
+          });
+        }
+      }
+      await removeNewImageSafely(stored.path, `${entity}s`);
+    }
+    throw error;
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
+async function clearImage(entity, id, actor) {
+  requireImageManager(entity, id, actor);
+  return inTransaction(async (connection) => {
+    const current = entity === 'restaurant'
+      ? await model.lockRestaurantImage(connection, id)
+      : await model.lockFoodImage(connection, id);
+    if (!current) {
+      throw new AppError(`${entity === 'food' ? 'Food' : 'Restaurant'} not found`, 404, 'NOT_FOUND');
+    }
+    if (entity === 'restaurant') {
+      if (actor.role === 'RESTAURANT' && Number(current.user_id) !== Number(actor.userId)) {
+        throw new AppError('You cannot manage this Restaurant image', 403, 'FORBIDDEN');
+      }
+    } else if (Number(current.restaurant_id) !== Number(actor.restaurantId)) {
+      throw new AppError('Food not found', 404, 'NOT_FOUND');
+    }
+
+    if (current.image) {
+      const affectedRows = entity === 'restaurant'
+        ? await model.updateRestaurantImage(connection, id, null)
+        : await model.updateFoodImage(connection, id, actor.restaurantId, null);
+      if (affectedRows !== 1) {
+        throw new AppError('Image could not be removed from the resource', 409, 'IMAGE_UPDATE_CONFLICT');
+      }
+    }
+    return current.image || null;
+  }).then(async (oldImage) => {
+    await deleteStoredImageSafely(oldImage, `${entity}s`);
+    return { image: null };
+  });
 }
 
 module.exports = {
@@ -158,5 +307,21 @@ module.exports = {
     } catch (error) {
       throw databaseError(error);
     }
+  },
+
+  uploadRestaurantImage(id, file, actor) {
+    return updateImage('restaurant', id, file, actor);
+  },
+
+  deleteRestaurantImage(id, actor) {
+    return clearImage('restaurant', id, actor);
+  },
+
+  uploadFoodImage(id, file, actor) {
+    return updateImage('food', id, file, actor);
+  },
+
+  deleteFoodImage(id, actor) {
+    return clearImage('food', id, actor);
   },
 };

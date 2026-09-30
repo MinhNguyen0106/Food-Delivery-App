@@ -262,6 +262,68 @@ module.exports = {
     return rows[0]?.status_id || null;
   },
 
+  async lockRestaurantImage(connection, restaurantId) {
+    const [rows] = await connection.execute(
+      `SELECT restaurant_id, user_id, image
+       FROM restaurants
+       WHERE restaurant_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [restaurantId]
+    );
+    return rows[0] || null;
+  },
+
+  async getRestaurantImage(connection, restaurantId) {
+    const [rows] = await connection.execute(
+      `SELECT restaurant_id, user_id, image
+       FROM restaurants
+       WHERE restaurant_id = ?
+       LIMIT 1`,
+      [restaurantId]
+    );
+    return rows[0] || null;
+  },
+
+  async updateRestaurantImage(connection, restaurantId, imagePath) {
+    const [result] = await connection.execute(
+      'UPDATE restaurants SET image = ? WHERE restaurant_id = ?',
+      [imagePath, restaurantId]
+    );
+    return result.affectedRows;
+  },
+
+  async lockFoodImage(connection, foodId) {
+    const [rows] = await connection.execute(
+      `SELECT food_id, restaurant_id, image
+       FROM foods
+       WHERE food_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [foodId]
+    );
+    return rows[0] || null;
+  },
+
+  async getFoodImage(connection, foodId) {
+    const [rows] = await connection.execute(
+      `SELECT food_id, restaurant_id, image
+       FROM foods
+       WHERE food_id = ?
+       LIMIT 1`,
+      [foodId]
+    );
+    return rows[0] || null;
+  },
+
+  async updateFoodImage(connection, foodId, restaurantId, imagePath) {
+    const [result] = await connection.execute(
+      'UPDATE foods SET image = ? WHERE food_id = ? AND restaurant_id = ?',
+      [imagePath, foodId, restaurantId]
+    );
+    return result.affectedRows;
+  },
+
   async createFood(data, connection = db) {
     const [result] = await connection.execute(
       `INSERT INTO foods (restaurant_id, category_id, name, description, price, image, status_id)

@@ -20,6 +20,15 @@ function parsePort(name, fallback) {
   return value;
 }
 
+function parseDeliveryFeePerKm() {
+  const rawValue = process.env.DELIVERY_FEE_PER_KM || '5000';
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value < 0 || value > 9999999999.99) {
+    throw new Error('DELIVERY_FEE_PER_KM must be between 0 and 9999999999.99');
+  }
+  return value;
+}
+
 module.exports = Object.freeze({
   port: parsePort('PORT', 3000),
   db: Object.freeze({
@@ -36,4 +45,5 @@ module.exports = Object.freeze({
     }
     return value;
   })(),
+  deliveryFeePerKm: parseDeliveryFeePerKm(),
 });

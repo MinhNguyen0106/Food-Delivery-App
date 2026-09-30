@@ -4,6 +4,10 @@ export interface Food {
   foodId: number;
   restaurantId: number;
   categoryId: number;
+  category?: {
+    categoryId: number;
+    name: string;
+  };
   name: string;
   description?: string | null;
   price: number;

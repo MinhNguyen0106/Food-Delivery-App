@@ -5,7 +5,7 @@ const { jwtSecret } = require("../config/env");
 const AppError = require("./AppError");
 const authModel = require("../models/authModel");
 
-const SESSION_SECONDS = 60 * 60;
+const JWT_TTL_SECONDS = 60 * 60;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phonePattern = /^\+?[0-9]{8,15}$/;
 
@@ -101,23 +101,14 @@ function handleDuplicate(error) {
   throw error;
 }
 
-async function issueToken(connection, userId, role) {
-  const sessionId = randomUUID();
-  await connection.execute(
-    `INSERT INTO user_sessions (session_id, user_id, expires_at)
-     VALUES (?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ${SESSION_SECONDS} SECOND))`,
-    [sessionId, userId],
-  );
-
-  const token = jwt.sign({ role }, jwtSecret, {
+function issueToken(userId, role) {
+  return jwt.sign({ role }, jwtSecret, {
     subject: String(userId),
-    jwtid: sessionId,
-    expiresIn: SESSION_SECONDS,
+    jwtid: randomUUID(),
+    expiresIn: JWT_TTL_SECONDS,
     issuer: "food-delivery-backend",
     audience: "food-delivery-api",
   });
-
-  return { token, expiresIn: SESSION_SECONDS };
 }
 
 async function registerCustomer(input) {
@@ -227,41 +218,8 @@ async function login(emailInput, passwordInput) {
     throw new AppError("Account is locked or inactive", 403, "ACCOUNT_LOCKED");
   }
 
-  const connection = await authModel.pool.getConnection();
-  try {
-    await connection.beginTransaction();
-    const [activeUsers] = await connection.execute(
-      `SELECT u.user_id
-       FROM users u
-       JOIN user_statuses status ON status.status_id = u.status_id
-       WHERE u.user_id = ? AND status.status_name = 'ACTIVE'
-       FOR UPDATE`,
-      [identity.user_id],
-    );
-    if (!activeUsers.length) {
-      throw new AppError(
-        "Account is locked or inactive",
-        403,
-        "ACCOUNT_LOCKED",
-      );
-    }
-    const session = await issueToken(
-      connection,
-      identity.user_id,
-      identity.role,
-    );
-    await connection.commit();
-    return { ...session, user: safeUser(identity) };
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
-}
-
-async function logout(user) {
-  await authModel.revokeSession(user.sessionId, user.userId);
+  const token = issueToken(identity.user_id, identity.role);
+  return { token, expiresIn: JWT_TTL_SECONDS, user: safeUser(identity) };
 }
 
 async function getProfile(userId) {
@@ -432,10 +390,6 @@ async function changePassword(user, currentPasswordInput, newPasswordInput) {
       "UPDATE users SET password_hash = ? WHERE user_id = ?",
       [passwordHash, user.userId],
     );
-    await connection.execute(
-      "UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL",
-      [user.userId],
-    );
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -448,7 +402,6 @@ async function changePassword(user, currentPasswordInput, newPasswordInput) {
 module.exports = {
   registerCustomer,
   login,
-  logout,
   getProfile,
   updateProfile,
   changePassword,

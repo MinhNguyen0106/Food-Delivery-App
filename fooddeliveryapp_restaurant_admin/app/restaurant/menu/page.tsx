@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { FoodFormModal } from "@/components/restaurant/FoodFormModal";
-import { adminCategoryService } from "@/services/admin/category.service";
+import { categoryService } from "@/services/category.service";
 import {
   restaurantMenuService,
 } from "@/services/restaurant/menu.service";
@@ -19,10 +19,17 @@ export default function MenuPage() {
     try {
       const [foodList, categoryList] = await Promise.all([
         restaurantMenuService.listFoods(),
-        adminCategoryService.getActive(),
+        categoryService.getCategories(),
       ]);
       setFoods(foodList);
-      setCategories(categoryList);
+      setCategories(
+        categoryList.map((category) => ({
+          categoryId: category.category_id,
+          name: category.name,
+          description: category.description,
+          isActive: Boolean(category.is_active),
+        })),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không thể tải thực đơn");
     }
@@ -33,14 +40,12 @@ export default function MenuPage() {
   }, []);
   async function save(input: CreateFoodInput) {
     try {
-      const item = editing
-        ? await restaurantMenuService.updateFood(editing.foodId, input)
-        : await restaurantMenuService.createFood(input);
-      setFoods((current) =>
-        editing
-          ? current.map((food) => (food.foodId === item.foodId ? item : food))
-          : [item, ...current],
-      );
+      if (editing) {
+        await restaurantMenuService.updateFood(editing.foodId, input);
+      } else {
+        await restaurantMenuService.createFood(input);
+      }
+      setFoods(await restaurantMenuService.listFoods());
       setEditing(undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không thể lưu món ăn");
@@ -48,10 +53,15 @@ export default function MenuPage() {
   }
   async function toggle(food: Food) {
     try {
-      const item = await restaurantMenuService.updateFoodStatus(
-        food.foodId,
-        food.status === "AVAILABLE" ? "UNAVAILABLE" : "AVAILABLE",
-      );
+      const nextStatus =
+        food.status === "AVAILABLE" ? "UNAVAILABLE" : "AVAILABLE";
+      const statuses = await restaurantMenuService.listFoodStatuses();
+      const status = statuses.find((item) => item.status_name === nextStatus);
+      if (!status) {
+        throw new Error(`Trạng thái món "${nextStatus}" chưa được cấu hình`);
+      }
+      await restaurantMenuService.updateFoodStatus(food.foodId, status.status_id);
+      const item = await restaurantMenuService.getFood(food.foodId);
       setFoods((current) =>
         current.map((value) => (value.foodId === item.foodId ? item : value)),
       );
@@ -64,7 +74,7 @@ export default function MenuPage() {
   async function remove(food: Food) {
     if (!window.confirm(`Xóa món "${food.name}"?`)) return;
     try {
-      await foodService.remove(food.foodId);
+      await restaurantMenuService.deleteFood(food.foodId);
       setFoods((current) =>
         current.filter((item) => item.foodId !== food.foodId),
       );

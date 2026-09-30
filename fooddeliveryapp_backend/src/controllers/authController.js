@@ -23,7 +23,6 @@ exports.login = async (req, res) => {
 };
 
 exports.logout = async (req, res) => {
-  await authService.logout(req.user);
   return res.status(200).json({ success: true, message: 'Logged out successfully' });
 };
 
@@ -48,6 +47,6 @@ exports.changePassword = async (req, res) => {
   await authService.changePassword(req.user, body.currentPassword, body.newPassword);
   return res.status(200).json({
     success: true,
-    message: 'Password changed. Sign in again with the new password.',
+    message: 'Password changed successfully.',
   });
 };

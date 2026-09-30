@@ -1,9 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const ctrl = require('../controllers/cart_itemsController');
-router.get('/', ctrl.getAll);
-router.get('/:id', ctrl.getById);
-router.post('/', ctrl.create);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.delete);
+const authenticate = require('../middleware/authenticate');
+const authorizeRoles = require('../middleware/authorizeRoles');
+const controller = require('../controllers/cartController');
+const validation = require('../validators/orderingValidator');
+
+router.use(authenticate, authorizeRoles('CUSTOMER'));
+router.post('/', validation.addCartItem, controller.addItem);
+router.patch('/:id', validation.updateCartItem, controller.updateItem);
+router.delete('/:id', validation.cartItemId, controller.deleteItem);
 module.exports = router;

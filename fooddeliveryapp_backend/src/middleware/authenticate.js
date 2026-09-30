@@ -24,18 +24,25 @@ module.exports = async function authenticate(req, res, next) {
   if (
     typeof payload !== 'object' ||
     typeof payload.sub !== 'string' ||
-    typeof payload.jti !== 'string'
+    !/^[1-9]\d*$/.test(payload.sub) ||
+    !Number.isSafeInteger(Number(payload.sub))
   ) {
     return next(new AppError('Token is invalid', 401, 'INVALID_TOKEN'));
   }
 
   try {
-    const identity = await authModel.getSessionIdentity(payload.jti);
-    if (!identity || String(identity.user_id) !== payload.sub) {
-      return next(new AppError('Session is invalid or expired', 401, 'INVALID_TOKEN'));
+    const identity = await authModel.getAuthorizationIdentityById(Number(payload.sub));
+    if (!identity) {
+      return next(new AppError('Account is unavailable', 401, 'INVALID_TOKEN'));
     }
     if (identity.user_status !== 'ACTIVE') {
       return next(new AppError('Account is locked or inactive', 403, 'ACCOUNT_LOCKED'));
+    }
+    if (
+      identity.role === 'RESTAURANT' &&
+      ['SUSPENDED', 'REJECTED'].includes(identity.restaurant_status)
+    ) {
+      return next(new AppError('Restaurant account is suspended', 403, 'ACCOUNT_SUSPENDED'));
     }
 
     req.user = {
@@ -43,9 +50,9 @@ module.exports = async function authenticate(req, res, next) {
       role: identity.role,
       customerId: identity.customer_id,
       restaurantId: identity.restaurant_id,
+      restaurantStatus: identity.restaurant_status,
       shipperId: identity.shipper_id,
       adminId: identity.admin_id,
-      sessionId: payload.jti,
     };
     return next();
   } catch (error) {

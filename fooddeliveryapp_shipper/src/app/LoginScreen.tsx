@@ -237,6 +237,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useState } from "react";
+import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
   Alert,
@@ -278,7 +279,7 @@ export default function LoginScreen() {
       // ==============================
       // GỌI API LOGIN
       // ==============================
-      const response = await fetch("http://localhost:3000/api/users/login", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
 
         headers: {
@@ -296,83 +297,29 @@ export default function LoginScreen() {
       // ==============================
       const result = await response.json();
 
-      console.log("Login response:", result);
-
-      // ==============================
-      // LOGIN THÀNH CÔNG
-      // ==============================
       if (response.ok && result.success) {
-        /*
-          Backend trả về:
+        const token = result.data?.token;
+        const user = result.data?.user;
+        const shipperData = user?.shipper;
 
-          {
-            success: true,
-            message: "Đăng nhập thành công",
-            token: "...",
-            data: {
-              userId: ...,
-              shipperId: ...,
-              fullName: ...,
-              email: ...,
-              phone: ...,
-              roleId: 3,
-              statusId: 1,
-              shipperStatusId: ...
-            }
-          }
-        */
-
-        const token = result.token;
-        const shipperData = result.data;
-
-        // ==============================
-        // KIỂM TRA TOKEN
-        // ==============================
         if (!token) {
           throw new Error("Backend không trả về token đăng nhập.");
         }
 
-        // ==============================
-        // KIỂM TRA SHIPPER ID
-        // ==============================
-        if (!shipperData || !shipperData.shipperId) {
-          throw new Error("Backend không trả về thông tin Shipper.");
+        if (user?.role !== "SHIPPER" || !shipperData?.shipperId) {
+          throw new Error(
+            "Tài khoản không phải Shipper hoặc thiếu thông tin Shipper.",
+          );
         }
 
-        // ==============================
-        // LƯU JWT TOKEN
-        // ==============================
         await AsyncStorage.setItem("token", token);
-
-        // ==============================
-        // LƯU SHIPPER ID
-        // ==============================
         await AsyncStorage.setItem("shipperId", String(shipperData.shipperId));
-
-        // ==============================
-        // LƯU THÔNG TIN SHIPPER
-        // ==============================
         await AsyncStorage.setItem("shipperInfo", JSON.stringify(shipperData));
 
-        console.log("Đăng nhập thành công");
-        console.log("Token:", token);
-        console.log("Shipper ID:", shipperData.shipperId);
-
-        // ==============================
-        // CHUYỂN SANG HOME
-        // ==============================
         router.replace("/home");
       } else {
-        // ==============================
-        // LOGIN THẤT BẠI
-        // ==============================
         const errorMsg = result.message || "Đăng nhập thất bại.";
-
-        if (Platform.OS === "web") {
-          window.alert(`Đăng nhập thất bại: ${errorMsg}`);
-        } else {
-          Alert.alert("Đăng nhập thất bại", errorMsg);
-        }
+        // Hiển thị errorMsg như phần code hiện tại
       }
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);

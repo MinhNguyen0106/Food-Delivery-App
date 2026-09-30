@@ -5,6 +5,9 @@ module.exports = function authorizeRoles(...roles) {
     if (!req.user || !roles.includes(req.user.role)) {
       return next(new AppError('You are not allowed to perform this operation', 403, 'FORBIDDEN'));
     }
+    if (req.user.role === 'RESTAURANT' && req.user.restaurantStatus !== 'ACTIVE') {
+      return next(new AppError('Restaurant must be active to perform this operation', 403, 'RESTAURANT_NOT_ACTIVE'));
+    }
     return next();
   };
 };

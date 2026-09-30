@@ -14,13 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// =====================================================
-// BASE URL
-// =====================================================
-
-const BASE_URL =
-  Platform.OS === "web" ? "http://localhost:3000" : "http://192.168.0.106:3000";
+import { API_BASE_URL } from "../constants/api";
 
 // =====================================================
 // STATUS
@@ -42,10 +36,9 @@ type ShipperProfile = {
   user_id: number;
   full_name: string;
   phone: string;
-  shipper_status_id: number;
+  status_id: number;
 
   email: string;
-  role_id: number;
   user_status_id: number;
 
   created_at?: string;
@@ -152,27 +145,52 @@ export default function ProfileScreen() {
 
         setErrorMessage("");
 
-        const response = await fetchWithAuth(`${BASE_URL}/api/shippers/me`, {
-          method: "GET",
-        });
+        const shipperId = await AsyncStorage.getItem("shipperId");
+        if (!shipperId) {
+          throw new Error("Không tìm thấy mã Shipper trong phiên đăng nhập.");
+        }
 
-        if (!response) {
+        const [shipperResponse, userResponse] = await Promise.all([
+          fetchWithAuth(`${API_BASE_URL}/api/shippers/${shipperId}`),
+          fetchWithAuth(`${API_BASE_URL}/api/auth/me`),
+        ]);
+
+        if (!shipperResponse || !userResponse) {
           return;
         }
 
-        const result: ApiResponse<ShipperProfile> = await response.json();
+        const [shipperResult, userResult]: [
+          ApiResponse<ShipperProfile>,
+          ApiResponse<{ email: string }>,
+        ] = await Promise.all([shipperResponse.json(), userResponse.json()]);
 
-        if (!response.ok || !result.success || !result.data) {
-          throw new Error(result.message || "Không thể lấy thông tin cá nhân.");
+        if (
+          !shipperResponse.ok ||
+          !shipperResult.success ||
+          !shipperResult.data ||
+          !userResponse.ok ||
+          !userResult.success ||
+          !userResult.data
+        ) {
+          throw new Error(
+            shipperResult.message ||
+              userResult.message ||
+              "Không thể lấy thông tin cá nhân.",
+          );
         }
 
-        setProfile(result.data);
+        const profileData: ShipperProfile = {
+          ...shipperResult.data,
+          email: userResult.data.email,
+          user_status_id: USER_ACTIVE_ID,
+        };
 
-        setFullName(result.data.full_name || "");
-        setPhone(result.data.phone || "");
+        setProfile(profileData);
+        setFullName(profileData.full_name || "");
+        setPhone(profileData.phone || "");
 
         // Lưu lại thông tin mới nhất
-        await AsyncStorage.setItem("shipperInfo", JSON.stringify(result.data));
+        await AsyncStorage.setItem("shipperInfo", JSON.stringify(profileData));
       } catch (error) {
         console.error("FETCH PROFILE ERROR:", error);
 
@@ -226,7 +244,7 @@ export default function ProfileScreen() {
       };
     }
 
-    switch (profile.shipper_status_id) {
+    switch (profile.status_id) {
       case STATUS_ONLINE_ID:
         return {
           text: "Đang Online",
@@ -312,13 +330,13 @@ export default function ProfileScreen() {
     try {
       setIsSaving(true);
 
-      const response = await fetchWithAuth(`${BASE_URL}/api/shippers/me`, {
-        method: "PUT",
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/auth/me`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          full_name: trimmedName,
+          fullName: trimmedName,
           phone: trimmedPhone,
         }),
       });
@@ -736,9 +754,9 @@ export default function ProfileScreen() {
               </Text>
 
               <Text style={styles.activityStatusDescription}>
-                {profile.shipper_status_id === STATUS_ONLINE_ID
+                {profile.status_id === STATUS_ONLINE_ID
                   ? "Bạn đang sẵn sàng nhận đơn hàng."
-                  : profile.shipper_status_id === STATUS_BUSY_ID
+                  : profile.status_id === STATUS_BUSY_ID
                     ? "Bạn đang thực hiện một đơn giao hàng."
                     : "Bạn đang ngoại tuyến và chưa nhận đơn."}
               </Text>

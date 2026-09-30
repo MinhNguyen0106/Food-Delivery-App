@@ -12,25 +12,25 @@ const policies = {
   customer_profiles: { read: ['CUSTOMER', 'ADMIN'], write: [] },
   customers: { read: ['CUSTOMER', 'ADMIN'], write: [] },
   deliveries: { read: ALL_ACTORS, write: [] },
-  food_statuses: { read: ALL_ACTORS, write: ADMIN },
+  food_statuses: { read: ALL_ACTORS, write: [] },
   foods: { read: ['CUSTOMER', 'RESTAURANT', 'ADMIN'], write: ['RESTAURANT'] },
   order_details: { read: ALL_ACTORS, write: [] },
   order_status_history: { read: ALL_ACTORS, write: [] },
-  order_statuses: { read: ALL_ACTORS, write: ADMIN },
+  order_statuses: { read: ALL_ACTORS, write: [] },
   orders: { read: ALL_ACTORS, write: [] },
-  payment_methods: { read: ALL_ACTORS, write: ADMIN },
-  payment_statuses: { read: ALL_ACTORS, write: ADMIN },
+  payment_methods: { read: ALL_ACTORS, write: [] },
+  payment_statuses: { read: ALL_ACTORS, write: [] },
   payments: { read: ALL_ACTORS, write: [] },
-  restaurant_statuses: { read: ALL_ACTORS, write: ADMIN },
+  restaurant_statuses: { read: ALL_ACTORS, write: [] },
   restaurants: { read: ['CUSTOMER', 'RESTAURANT', 'ADMIN'], write: [] },
-  review_statuses: { read: ALL_ACTORS, write: ADMIN },
+  review_statuses: { read: ALL_ACTORS, write: [] },
   reviews: { read: ALL_ACTORS, write: [] },
-  shipper_statuses: { read: ALL_ACTORS, write: ADMIN },
+  shipper_statuses: { read: ALL_ACTORS, write: [] },
   shippers: { read: ['SHIPPER', 'ADMIN'], write: [] },
   user_roles: { read: ADMIN, write: [] },
   user_statuses: { read: ADMIN, write: [] },
-  users: { read: ['CUSTOMER', 'RESTAURANT', 'SHIPPER', 'ADMIN'], write: ADMIN },
-  voucher_statuses: { read: ['CUSTOMER', 'ADMIN'], write: ADMIN },
+  users: { read: ['CUSTOMER', 'RESTAURANT', 'SHIPPER', 'ADMIN'], write: [] },
+  voucher_statuses: { read: ['CUSTOMER', 'ADMIN'], write: [] },
   vouchers: { read: ['CUSTOMER', 'ADMIN'], write: ADMIN },
 };
 
@@ -227,6 +227,16 @@ module.exports = function authorizeResource(resource) {
     const allowedRoles = read ? policy.read : policy.write;
     if (!allowedRoles.includes(req.user.role)) {
       return next(forbidden());
+    }
+    if (
+      req.user.role === 'RESTAURANT' &&
+      req.user.restaurantStatus !== 'ACTIVE'
+    ) {
+      return next(new AppError(
+        'Restaurant must be active to perform this operation',
+        403,
+        'RESTAURANT_NOT_ACTIVE'
+      ));
     }
 
     try {

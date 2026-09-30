@@ -1,28 +1,92 @@
-import { restaurantOrderService } from "@/services/restaurant/order.service";
-import { orderMapper } from "@/services/mappers";
-import type { Order, UpdateOrderStatusInput } from "@/types/order";
+import apiClient, { unwrapResponse } from "@/services/api.client";
+import type {
+  Order as FrontendOrder,
+  OrderDetail as FrontendOrderDetail,
+} from "@/types/order";
+import type {
+  OrderDetailRecord,
+  OrderHistoryRecord,
+  OrderItemRecord,
+  OrderStatus,
+  OrderSummaryRecord,
+  OrderTransitionResult,
+} from "@/types/service-api";
 
-const statusIds: Record<string, number> = {
-  CONFIRMED: 2, PREPARING: 3, READY_FOR_PICKUP: 4, REJECTED: 9,
-};
+function mapItem(item: OrderItemRecord): FrontendOrderDetail {
+  return {
+    orderDetailId: item.order_detail_id,
+    foodId: item.food_id,
+    quantity: item.quantity,
+    subtotal: Number(item.subtotal),
+    food: { name: item.food_name },
+  };
+}
+
+function mapOrder(
+  record: OrderSummaryRecord | OrderDetailRecord,
+): FrontendOrder {
+  return {
+    orderId: record.order_id,
+    orderCode: record.order_code,
+    status: record.status,
+    createdAt: record.created_at,
+    totalAmount: Number(record.total_amount),
+    note: record.note,
+    details: "items" in record ? record.items.map(mapItem) : [],
+  };
+}
+
+function transition(
+  id: number,
+  action: "confirm" | "reject" | "prepare" | "ready-for-pickup",
+  note?: string,
+): Promise<{ data: import("@/services/api.client").ApiEnvelope<OrderTransitionResult> }> {
+  return apiClient.post<OrderTransitionResult>(
+    `/orders/${id}/${action}`,
+    note === undefined ? undefined : { note },
+  );
+}
 
 export const orderService = {
-  async list(): Promise<Order[]> {
-    const [orders, details] = await Promise.all([
-      restaurantOrderService.list(), restaurantOrderService.listDetails(),
-    ]);
-    return orders.map((order) =>
-      orderMapper.toCamelCase(order, details.filter((detail) => detail.order_id === order.order_id)),
+  async list(status?: OrderStatus): Promise<FrontendOrder[]> {
+    const records = unwrapResponse(
+      await apiClient.get<OrderSummaryRecord[]>("/orders", {
+        params: { status },
+      }),
+    );
+    return records.map(mapOrder);
+  },
+
+  async getById(id: number): Promise<FrontendOrder> {
+    return mapOrder(
+      unwrapResponse(
+        await apiClient.get<OrderDetailRecord>(`/orders/${id}`),
+      ),
     );
   },
-  async updateStatus(id: number, input: UpdateOrderStatusInput): Promise<Order> {
-    await restaurantOrderService.update(id, { status_id: statusIds[input.status], note: input.note });
-    const orders = await orderService.list();
-    const updated = orders.find((order) => order.orderId === id);
-    if (!updated) throw new Error("Không tìm thấy đơn hàng sau khi cập nhật");
-    return updated;
+
+  async getHistory(id: number): Promise<OrderHistoryRecord[]> {
+    return unwrapResponse(
+      await apiClient.get<OrderHistoryRecord[]>(`/orders/${id}/history`),
+    );
   },
-  reject(id: number, note: string) {
-    return this.updateStatus(id, { status: "REJECTED", note });
+
+  async confirmOrder(id: number, note?: string): Promise<OrderTransitionResult> {
+    return unwrapResponse(await transition(id, "confirm", note));
+  },
+
+  async rejectOrder(id: number, note?: string): Promise<OrderTransitionResult> {
+    return unwrapResponse(await transition(id, "reject", note));
+  },
+
+  async prepareOrder(id: number, note?: string): Promise<OrderTransitionResult> {
+    return unwrapResponse(await transition(id, "prepare", note));
+  },
+
+  async markReadyForPickup(
+    id: number,
+    note?: string,
+  ): Promise<OrderTransitionResult> {
+    return unwrapResponse(await transition(id, "ready-for-pickup", note));
   },
 };

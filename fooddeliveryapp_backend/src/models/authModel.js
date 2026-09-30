@@ -50,7 +50,7 @@ module.exports = {
     return rows[0] || null;
   },
 
-  async getSessionIdentity(sessionId) {
+  async getAuthorizationIdentityById(userId) {
     const [rows] = await pool.execute(
       `SELECT
         u.user_id,
@@ -58,32 +58,22 @@ module.exports = {
         ur.role_name AS role,
         c.customer_id,
         r.restaurant_id,
+        restaurant_status.status_name AS restaurant_status,
         s.shipper_id,
         a.admin_id
-      FROM user_sessions session
-      JOIN users u ON u.user_id = session.user_id
+      FROM users u
       JOIN user_statuses us ON us.status_id = u.status_id
       JOIN user_roles ur ON ur.role_id = u.role_id
       LEFT JOIN customers c ON c.user_id = u.user_id
       LEFT JOIN restaurants r ON r.user_id = u.user_id
+      LEFT JOIN restaurant_statuses restaurant_status
+        ON restaurant_status.status_id = r.status_id
       LEFT JOIN shippers s ON s.user_id = u.user_id
       LEFT JOIN admins a ON a.user_id = u.user_id
-      WHERE session.session_id = ?
-        AND session.revoked_at IS NULL
-        AND session.expires_at > CURRENT_TIMESTAMP
+      WHERE u.user_id = ?
       LIMIT 1`,
-      [sessionId]
+      [userId]
     );
     return rows[0] || null;
-  },
-
-  async revokeSession(sessionId, userId) {
-    const [result] = await pool.execute(
-      `UPDATE user_sessions
-       SET revoked_at = CURRENT_TIMESTAMP
-       WHERE session_id = ? AND user_id = ? AND revoked_at IS NULL`,
-      [sessionId, userId]
-    );
-    return result.affectedRows;
   },
 };

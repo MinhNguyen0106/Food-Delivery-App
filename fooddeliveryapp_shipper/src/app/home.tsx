@@ -717,6 +717,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
+import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
   Alert,
@@ -729,13 +730,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
-// ======================================================
-// BASE URL
-// ======================================================
-
-const BASE_URL =
-  Platform.OS === "web" ? "http://localhost:3000" : "http://192.168.0.106:3000";
 
 // ======================================================
 // STATUS CONSTANTS
@@ -761,6 +755,7 @@ type Shipper = {
 
 type Order = {
   order_id: number;
+
   order_code?: string;
 
   customer_id?: number;
@@ -769,6 +764,7 @@ type Order = {
 
   restaurant_name?: string;
   restaurant_phone?: string;
+  restaurant_address?: string;
 
   pickup_address?: string;
   delivery_address?: string;
@@ -785,7 +781,7 @@ type Order = {
 
   note?: string;
 
-  delivery_id?: number;
+  delivery_id: number;
   shipper_id?: number | null;
   delivery_status?: string;
 
@@ -963,12 +959,12 @@ export default function HomeScreen() {
   // ====================================================
 
   const fetchShipper = useCallback(
-    async (currentShipperId: number): Promise<void> => {
+    async (currentShipperId: number): Promise<Shipper | null> => {
       try {
         console.log("Đang lấy thông tin shipper:", currentShipperId);
 
         const response = await fetchWithAuth(
-          `${BASE_URL}/api/shippers/${currentShipperId}`,
+          `${API_BASE_URL}/api/shippers/${currentShipperId}`,
         );
 
         const result: ApiResponse<Shipper> = await response.json();
@@ -996,11 +992,12 @@ export default function HomeScreen() {
         await AsyncStorage.setItem("shipperInfo", JSON.stringify(result.data));
 
         console.log("Đã cập nhật thông tin shipper:", result.data.full_name);
+        return result.data;
       } catch (error) {
         console.error("Lỗi fetchShipper:", error);
 
         if (error instanceof Error && error.message === "UNAUTHORIZED") {
-          return;
+          return null;
         }
 
         throw error;
@@ -1017,7 +1014,9 @@ export default function HomeScreen() {
     try {
       console.log("Đang lấy danh sách đơn hàng...");
 
-      const response = await fetchWithAuth(`${BASE_URL}/api/orders/available`);
+      const response = await fetchWithAuth(
+        `${API_BASE_URL}/api/deliveries/available`,
+      );
 
       const result: ApiResponse<Order[]> = await response.json();
 
@@ -1072,13 +1071,20 @@ export default function HomeScreen() {
         // LẤY THÔNG TIN SHIPPER MỚI
         // ==============================================
 
-        await fetchShipper(currentShipperId);
+        const currentShipper = await fetchShipper(currentShipperId);
+        if (!currentShipper) {
+          return;
+        }
 
         // ==============================================
         // LẤY ĐƠN HÀNG CÓ THỂ NHẬN
         // ==============================================
 
-        await fetchOrders();
+        if (currentShipper.status_id === STATUS_ONLINE_ID) {
+          await fetchOrders();
+        } else {
+          setOrders([]);
+        }
 
         console.log("==============================");
         console.log("TẢI DỮ LIỆU HOME THÀNH CÔNG");
@@ -1158,19 +1164,19 @@ export default function HomeScreen() {
       const newStatusId = value ? STATUS_ONLINE_ID : STATUS_OFFLINE_ID;
 
       const response = await fetchWithAuth(
-        `${BASE_URL}/api/shippers/${shipperId}`,
+        `${API_BASE_URL}/api/deliveries/me/status`,
         {
-          method: "PUT",
+          method: "PATCH",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            status_id: newStatusId,
+            status: value ? "ONLINE" : "OFFLINE",
           }),
         },
       );
 
-      const result: ApiResponse<Shipper> = await response.json();
+      const result: ApiResponse<{ status: string }> = await response.json();
 
       console.log("KẾT QUẢ UPDATE STATUS:", result);
 
@@ -1180,31 +1186,24 @@ export default function HomeScreen() {
         );
       }
 
+      const expectedStatus = value ? "ONLINE" : "OFFLINE";
+      if (result.data?.status !== expectedStatus) {
+        throw new Error("Backend trả về trạng thái Shipper không hợp lệ.");
+      }
+
       // Cập nhật trạng thái Online / Offline trên giao diện
-      setIsOnline(newStatusId === STATUS_ONLINE_ID);
+      setIsOnline(value);
 
-      // Nếu backend trả về thông tin shipper
-      if (result.data) {
-        setShipper(result.data);
-
-        await AsyncStorage.setItem("shipperInfo", JSON.stringify(result.data));
-      } else {
-        // Backend không trả data
-        // Tự cập nhật status_id trong state hiện tại
-        setShipper((prev) => {
-          if (!prev) {
-            return prev;
-          }
-
-          const updatedShipper = {
-            ...prev,
-            status_id: newStatusId,
-          };
-
-          AsyncStorage.setItem("shipperInfo", JSON.stringify(updatedShipper));
-
-          return updatedShipper;
-        });
+      // Cập nhật trạng thái shipper đã lưu cục bộ.
+      const updatedShipper = shipper
+        ? { ...shipper, status_id: newStatusId }
+        : null;
+      setShipper(updatedShipper);
+      if (updatedShipper) {
+        await AsyncStorage.setItem(
+          "shipperInfo",
+          JSON.stringify(updatedShipper),
+        );
       }
 
       Alert.alert(
@@ -1230,7 +1229,10 @@ export default function HomeScreen() {
   // ACCEPT ORDER
   // ====================================================
 
-  const acceptOrder = async (orderId: number): Promise<void> => {
+  const acceptOrder = async (
+    deliveryId: number,
+    orderId: number,
+  ): Promise<void> => {
     if (!shipperId) {
       if (Platform.OS === "web") {
         window.alert("Không tìm thấy thông tin Shipper.");
@@ -1280,12 +1282,9 @@ export default function HomeScreen() {
       console.log("Đang nhận đơn:", orderId);
 
       const response = await fetchWithAuth(
-        `${BASE_URL}/api/deliveries/accept`,
+        `${API_BASE_URL}/api/deliveries/${deliveryId}/accept`,
         {
           method: "POST",
-          body: JSON.stringify({
-            order_id: orderId,
-          }),
         },
       );
 
@@ -1457,7 +1456,7 @@ export default function HomeScreen() {
         return "Chờ lấy hàng";
 
       default:
-        return "Đang chờ";
+        return "Chờ lấy hàng";
     }
   };
 
@@ -1693,9 +1692,11 @@ export default function HomeScreen() {
                       </Text>
                     </View>
 
-                    <Text style={styles.orderTotal}>
-                      {formatMoney(order.total_amount)}
-                    </Text>
+                    {order.total_amount != null ? (
+                      <Text style={styles.orderTotal}>
+                        {formatMoney(order.total_amount)}
+                      </Text>
+                    ) : null}
                   </View>
 
                   {/* RESTAURANT */}
@@ -1726,7 +1727,7 @@ export default function HomeScreen() {
                     <Text style={styles.addressTitle}>📍 Địa chỉ lấy hàng</Text>
 
                     <Text style={styles.addressText}>
-                      {order.pickup_address || "Chưa có địa chỉ lấy hàng"}
+                      {order.restaurant_address || "Chưa có địa chỉ lấy hàng"}
                     </Text>
                   </View>
 
@@ -1778,24 +1779,27 @@ export default function HomeScreen() {
 
                   {/* ORDER PRICE */}
 
-                  <View style={styles.priceContainer}>
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceLabel}>Tạm tính</Text>
+                  {order.subtotal != null ||
+                  order.delivery_fee != null ||
+                  order.total_amount != null ? (
+                    <View style={styles.priceContainer}>
+                      <View style={styles.priceRow}>
+                        <Text style={styles.priceLabel}>Tạm tính</Text>
 
-                      <Text style={styles.priceValue}>
-                        {formatMoney(order.subtotal)}
-                      </Text>
-                    </View>
+                        <Text style={styles.priceValue}>
+                          {formatMoney(order.subtotal)}
+                        </Text>
+                      </View>
 
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceLabel}>Phí giao hàng</Text>
+                      <View style={styles.priceRow}>
+                        <Text style={styles.priceLabel}>Phí giao hàng</Text>
 
-                      <Text style={styles.priceValue}>
-                        {formatMoney(order.delivery_fee)}
-                      </Text>
-                    </View>
+                        <Text style={styles.priceValue}>
+                          {formatMoney(order.delivery_fee)}
+                        </Text>
+                      </View>
 
-                    {order.discount ? (
+                      {order.discount ? (
                       <View style={styles.priceRow}>
                         <Text style={styles.priceLabel}>Giảm giá</Text>
 
@@ -1803,16 +1807,17 @@ export default function HomeScreen() {
                           - {formatMoney(order.discount)}
                         </Text>
                       </View>
-                    ) : null}
+                      ) : null}
 
-                    <View style={[styles.priceRow, styles.totalRow]}>
-                      <Text style={styles.totalLabel}>Tổng tiền</Text>
+                      <View style={[styles.priceRow, styles.totalRow]}>
+                        <Text style={styles.totalLabel}>Tổng tiền</Text>
 
-                      <Text style={styles.totalValue}>
-                        {formatMoney(order.total_amount)}
-                      </Text>
+                        <Text style={styles.totalValue}>
+                          {formatMoney(order.total_amount)}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
+                  ) : null}
 
                   {/* ACCEPT BUTTON */}
 
@@ -1822,7 +1827,7 @@ export default function HomeScreen() {
                       (!isOnline || isBusy || isProcessing) &&
                         styles.acceptButtonDisabled,
                     ]}
-                    onPress={() => acceptOrder(order.order_id)}
+                    onPress={() => acceptOrder(order.delivery_id, order.order_id)}
                     disabled={!isOnline || isBusy || isProcessing}
                   >
                     {isProcessing ? (

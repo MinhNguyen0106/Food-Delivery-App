@@ -74,3 +74,39 @@ exports.deleteFood = async (req, res, next) => {
     return next(error);
   }
 };
+
+exports.uploadRestaurantImage = async (req, res, next) => {
+  try {
+    const data = await service.uploadRestaurantImage(req.params.id, req.file, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.deleteRestaurantImage = async (req, res, next) => {
+  try {
+    const data = await service.deleteRestaurantImage(req.params.id, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.uploadFoodImage = async (req, res, next) => {
+  try {
+    const data = await service.uploadFoodImage(req.params.id, req.file, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.deleteFoodImage = async (req, res, next) => {
+  try {
+    const data = await service.deleteFoodImage(req.params.id, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};

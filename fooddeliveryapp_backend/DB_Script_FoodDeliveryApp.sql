@@ -676,7 +676,7 @@ INSERT INTO payments
 (payment_id, order_id, method_id, status_id, amount, paid_at) VALUES
 (1, 1, 1, 2, 170000, '2026-09-21 10:15:00'),
 (2, 2, 1, 1, 146000, NULL),
-(3, 3, 1, 1, 142000, NULL),
+(3, 3, 1, 1, 132000, NULL),
 (4, 4, 1, 4, 118000, NULL),
 (5, 5, 1, 4, 70000, NULL);
 

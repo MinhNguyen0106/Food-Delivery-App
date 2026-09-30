@@ -5,6 +5,7 @@ const authorizeResource = require('../middleware/authorizeResource');
 const authorizeRoles = require('../middleware/authorizeRoles');
 const controller = require('../controllers/catalogController');
 const validation = require('../validators/catalogValidator');
+const imageUpload = require('../middleware/imageUpload');
 
 const catalogReaders = ['CUSTOMER', 'RESTAURANT', 'ADMIN'];
 
@@ -15,6 +16,37 @@ router.get('/categories', authenticate, authorizeRoles(...catalogReaders), contr
 router.get('/categories/:id', authenticate, authorizeRoles(...catalogReaders), validation.validateId, controller.getCategory);
 router.get('/foods', authenticate, authorizeRoles(...catalogReaders), validation.validateFoodList, controller.listFoods);
 router.get('/foods/:id', authenticate, authorizeRoles(...catalogReaders), validation.validateId, controller.getFood);
+
+router.put(
+  '/restaurants/:id/image',
+  authenticate,
+  authorizeRoles('RESTAURANT', 'ADMIN'),
+  validation.validateId,
+  imageUpload,
+  controller.uploadRestaurantImage
+);
+router.delete(
+  '/restaurants/:id/image',
+  authenticate,
+  authorizeRoles('RESTAURANT', 'ADMIN'),
+  validation.validateId,
+  controller.deleteRestaurantImage
+);
+router.put(
+  '/foods/:id/image',
+  authenticate,
+  authorizeRoles('RESTAURANT'),
+  validation.validateId,
+  imageUpload,
+  controller.uploadFoodImage
+);
+router.delete(
+  '/foods/:id/image',
+  authenticate,
+  authorizeRoles('RESTAURANT'),
+  validation.validateId,
+  controller.deleteFoodImage
+);
 
 router.post('/categories', authenticate, authorizeResource('categories'), validation.validateCategoryWrite, controller.createCategory);
 router.put('/categories/:id', authenticate, authorizeResource('categories'), validation.validateId, validation.validateCategoryWrite, controller.updateCategory);

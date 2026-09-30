@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const ctrl = require('../controllers/cartsController');
-router.get('/', ctrl.getAll);
-router.get('/:id', ctrl.getById);
-router.post('/', ctrl.create);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.delete);
+const authenticate = require('../middleware/authenticate');
+const authorizeRoles = require('../middleware/authorizeRoles');
+const controller = require('../controllers/cartController');
+
+router.use(authenticate, authorizeRoles('CUSTOMER'));
+router.get('/', controller.get);
+router.delete('/', controller.clear);
 module.exports = router;

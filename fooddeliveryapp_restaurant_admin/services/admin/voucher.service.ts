@@ -1,13 +1,40 @@
 import apiClient, { unwrapResponse } from "@/services/api.client";
-import type { Voucher } from "@/types/restaurant/index";
+import type {
+  VoucherRecord,
+  VoucherWriteInput,
+} from "@/types/service-api";
 
 export const adminVoucherService = {
-  list: async () => unwrapResponse<Voucher[]>(await apiClient.get("/vouchers")),
-  getById: async (id: number) => unwrapResponse<Voucher>(await apiClient.get(`/vouchers/${id}`)),
-  create: async (payload: Omit<Voucher, "voucher_id">) =>
-    unwrapResponse<undefined>(await apiClient.post("/vouchers", payload)),
-  update: async (id: number, payload: Partial<Omit<Voucher, "voucher_id">>) =>
-    unwrapResponse<undefined>(await apiClient.put(`/vouchers/${id}`, payload)),
-  remove: async (id: number) =>
-    unwrapResponse<undefined>(await apiClient.delete(`/vouchers/${id}`)),
+  async list(): Promise<VoucherRecord[]> {
+    return unwrapResponse(
+      await apiClient.get<VoucherRecord[]>("/vouchers"),
+    );
+  },
+
+  async getById(id: number): Promise<VoucherRecord> {
+    return unwrapResponse(
+      await apiClient.get<VoucherRecord>(`/vouchers/${id}`),
+    );
+  },
+
+  async create(input: VoucherWriteInput): Promise<{ voucherId: number }> {
+    return unwrapResponse(
+      await apiClient.post<{ voucherId: number }>("/vouchers", input),
+    );
+  },
+
+  async replaceVoucher(
+    id: number,
+    input: VoucherWriteInput,
+  ): Promise<{ voucherId: number }> {
+    return unwrapResponse(
+      await apiClient.put<{ voucherId: number }>(`/vouchers/${id}`, input),
+    );
+  },
+
+  async remove(id: number): Promise<{ voucherId: number }> {
+    return unwrapResponse(
+      await apiClient.delete<{ voucherId: number }>(`/vouchers/${id}`),
+    );
+  },
 };

@@ -1189,6 +1189,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
+import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
   Pressable,
@@ -1198,8 +1199,6 @@ import {
   Text,
   View,
 } from "react-native";
-
-const BASE_URL = "http://localhost:3000";
 
 // ======================================================
 // SHIPPER STATUS
@@ -1218,14 +1217,6 @@ const DELIVERY_DELIVERING = "DELIVERING";
 const DELIVERY_COMPLETED = "COMPLETED";
 
 // ======================================================
-// ORDER STATUS
-// ======================================================
-
-const ORDER_READY_FOR_PICKUP = 4;
-const ORDER_PICKED_UP = 5;
-const ORDER_DELIVERING = 6;
-const ORDER_COMPLETED = 7;
-
 // ======================================================
 // TYPES
 // ======================================================
@@ -1241,7 +1232,7 @@ type DeliveryStatus =
 interface Delivery {
   delivery_id: number;
   order_id: number;
-  shipper_id: number;
+  shipper_id?: number;
 
   pickup_time: string | null;
   delivery_time: string | null;
@@ -1251,30 +1242,17 @@ interface Delivery {
   note: string | null;
 
   order_code: string;
-
-  customer_id: number;
-  restaurant_id: number;
-  address_id: number;
-
-  subtotal: string;
-  delivery_fee: string;
-  discount: string;
   total_amount: string;
 
-  order_status_id: number;
-
-  order_note: string | null;
-
-  created_at: string;
-  updated_at: string;
+  order_status: string;
 
   restaurant_name: string;
-  pickup_address: string;
-  restaurant_phone: string;
+  restaurant_address: string | null;
+  full_address: string | null;
+  restaurant_phone: string | null;
 
-  receiver_name: string;
-  receiver_phone: string;
-  delivery_address: string;
+  receiver_name: string | null;
+  receiver_phone: string | null;
 }
 
 interface Shipper {
@@ -1406,7 +1384,7 @@ export default function GiaohangScreen() {
   const fetchShipper = useCallback(
     async (shipperId: number) => {
       const result = await fetchWithAuth(
-        `${BASE_URL}/api/shippers/${shipperId}`,
+        `${API_BASE_URL}/api/shippers/${shipperId}`,
       );
 
       const data = result.data as Shipper;
@@ -1423,9 +1401,9 @@ export default function GiaohangScreen() {
   // ======================================================
 
   const fetchDeliveries = useCallback(
-    async (shipperId: number) => {
+    async () => {
       const result = await fetchWithAuth(
-        `${BASE_URL}/api/deliveries/shipper/${shipperId}`,
+        `${API_BASE_URL}/api/deliveries/mine`,
       );
 
       const data = result.data as Delivery[];
@@ -1471,7 +1449,7 @@ export default function GiaohangScreen() {
 
       const [shipperData, deliveries] = await Promise.all([
         fetchShipper(auth.shipperId),
-        fetchDeliveries(auth.shipperId),
+        fetchDeliveries(),
       ]);
 
       const currentDelivery = findCurrentDelivery(deliveries);
@@ -1483,7 +1461,7 @@ export default function GiaohangScreen() {
       console.log("STATE SAU LOAD");
       console.log("Delivery:", currentDelivery?.delivery_id);
       console.log("Delivery status:", currentDelivery?.delivery_status);
-      console.log("Order status:", currentDelivery?.order_status_id);
+      console.log("Order status:", currentDelivery?.order_status);
       console.log("========================================");
     } catch (error) {
       console.error("LOAD DATA ERROR:", error);
@@ -1534,14 +1512,20 @@ export default function GiaohangScreen() {
       console.log("New status:", newStatus);
       console.log("========================================");
 
+      const actionByStatus: Partial<Record<DeliveryStatus, string>> = {
+        PICKED_UP: "pickup",
+        DELIVERING: "start",
+        COMPLETED: "complete",
+      };
+      const action = actionByStatus[newStatus];
+
+      if (!action) {
+        throw new Error(`Không hỗ trợ cập nhật trạng thái ${newStatus}.`);
+      }
+
       const result = await fetchWithAuth(
-        `${BASE_URL}/api/deliveries/${delivery.delivery_id}/status`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            status: newStatus,
-          }),
-        },
+        `${API_BASE_URL}/api/deliveries/${delivery.delivery_id}/${action}`,
+        { method: "POST" },
       );
 
       console.log("UPDATE THÀNH CÔNG");
@@ -1895,7 +1879,7 @@ export default function GiaohangScreen() {
               </Text>
 
               <Text style={styles.debugText}>
-                Order status ID: {delivery.order_status_id}
+                Order status: {delivery.order_status}
               </Text>
             </View>
 
@@ -1940,7 +1924,7 @@ export default function GiaohangScreen() {
                 {delivery.restaurant_name}
               </Text>
 
-              <Text style={styles.address}>{delivery.pickup_address}</Text>
+              <Text style={styles.address}>{delivery.restaurant_address}</Text>
 
               <Text style={styles.phone}>☎ {delivery.restaurant_phone}</Text>
             </View>
@@ -1954,7 +1938,7 @@ export default function GiaohangScreen() {
 
               <Text style={styles.customerName}>{delivery.receiver_name}</Text>
 
-              <Text style={styles.address}>{delivery.delivery_address}</Text>
+              <Text style={styles.address}>              {delivery.full_address}</Text>
 
               <Text style={styles.phone}>☎ {delivery.receiver_phone}</Text>
             </View>
@@ -1963,11 +1947,11 @@ export default function GiaohangScreen() {
                 NOTE
             ======================================== */}
 
-            {delivery.order_note && (
+            {delivery.note && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>📝 Ghi chú</Text>
 
-                <Text style={styles.note}>{delivery.order_note}</Text>
+                <Text style={styles.note}>{delivery.note}</Text>
               </View>
             )}
 

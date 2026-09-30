@@ -8,5 +8,10 @@ export interface AdminCategory {
   created_at: DateTime;
 }
 
-export type CreateAdminCategoryPayload = Omit<AdminCategory, "category_id" | "created_at">;
+export interface CreateAdminCategoryPayload {
+  name: string;
+  description?: string | null;
+  is_active?: boolean | 0 | 1;
+}
+
 export type UpdateAdminCategoryPayload = Partial<CreateAdminCategoryPayload>;
