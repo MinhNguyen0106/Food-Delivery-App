@@ -370,7 +370,7 @@ module.exports = {
   async lockOrderForTransition(connection, orderId) {
     const [rows] = await connection.execute(
       `SELECT order_record.order_id, order_record.customer_id,
-        order_record.restaurant_id, order_record.status_id,
+        order_record.restaurant_id, order_record.status_id, order_record.voucher_id,
         status.status_name AS status
        FROM orders order_record
        JOIN order_statuses status ON status.status_id = order_record.status_id

@@ -40,30 +40,56 @@ function adminVoucher(input, statusId) {
   };
 }
 
-module.exports = {
-  async applyForCheckout(connection, code, subtotalCents, amountBeforeDiscountCents) {
-    const row = await model.lockByCode(connection, code);
-    if (!row) throw new AppError('Voucher not found', 400, 'VOUCHER_INVALID');
-    if (row.status !== 'ACTIVE') {
-      throw new AppError('Voucher is not active', 409, 'VOUCHER_INACTIVE');
-    }
-    if (Number(row.is_in_period) !== 1) {
-      throw new AppError('Voucher is outside its validity period', 409, 'VOUCHER_EXPIRED');
-    }
-    if (Number(row.used_count) >= Number(row.usage_limit)) {
-      throw new AppError('Voucher usage limit has been reached', 409, 'VOUCHER_EXHAUSTED');
-    }
-    if (subtotalCents < toCents(row.min_order_value, 'Voucher minimum order value')) {
-      throw new AppError('Order does not meet the voucher minimum value', 409, 'VOUCHER_MINIMUM_NOT_MET');
-    }
-    const discountCents = Math.min(
+function validateCheckoutVoucher(row, subtotalCents, amountBeforeDiscountCents) {
+  if (!row) throw new AppError('Voucher not found', 400, 'VOUCHER_INVALID');
+  if (row.status !== 'ACTIVE') {
+    throw new AppError('Voucher is not active', 409, 'VOUCHER_INACTIVE');
+  }
+  if (Number(row.is_in_period) !== 1) {
+    throw new AppError('Voucher is outside its validity period', 409, 'VOUCHER_EXPIRED');
+  }
+  if (Number(row.used_count) >= Number(row.usage_limit)) {
+    throw new AppError('Voucher usage limit has been reached', 409, 'VOUCHER_EXHAUSTED');
+  }
+  if (subtotalCents < toCents(row.min_order_value, 'Voucher minimum order value')) {
+    throw new AppError('Order does not meet the voucher minimum value', 409, 'VOUCHER_MINIMUM_NOT_MET');
+  }
+  return {
+    voucherId: row.voucher_id,
+    code: row.code,
+    discountCents: Math.min(
       toCents(row.discount_value, 'Voucher discount'),
       amountBeforeDiscountCents
+    ),
+  };
+}
+
+async function ensureCustomerHasNotUsed(connection, customerId, voucher) {
+  if (await model.hasCustomerUsedVoucher(connection, customerId, voucher.voucherId)) {
+    throw new AppError(
+      'Each customer can use this voucher only once',
+      409,
+      'VOUCHER_ALREADY_USED'
     );
+  }
+}
+
+module.exports = {
+  async applyForCheckout(connection, code, subtotalCents, amountBeforeDiscountCents, customerId) {
+    const row = await model.lockByCode(connection, code);
+    const voucher = validateCheckoutVoucher(row, subtotalCents, amountBeforeDiscountCents);
+    await ensureCustomerHasNotUsed(connection, customerId, voucher);
     if (!(await model.incrementUsage(connection, row.voucher_id))) {
       throw new AppError('Voucher is no longer available', 409, 'VOUCHER_EXHAUSTED');
     }
-    return { voucherId: row.voucher_id, code: row.code, discountCents };
+    return voucher;
+  },
+
+  async previewForCheckout(connection, code, subtotalCents, amountBeforeDiscountCents, customerId) {
+    const row = await model.getByCode(connection, code);
+    const voucher = validateCheckoutVoucher(row, subtotalCents, amountBeforeDiscountCents);
+    await ensureCustomerHasNotUsed(connection, customerId, voucher);
+    return voucher;
   },
 
   async list(actor) {
@@ -80,7 +106,7 @@ module.exports = {
     ) {
       throw new AppError('Customer access is required', 403, 'FORBIDDEN');
     }
-    return model.listAvailable();
+    return model.listAvailable(Number(actor.customerId));
   },
 
   async get(idValue, actor) {

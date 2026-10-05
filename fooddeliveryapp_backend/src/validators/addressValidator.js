@@ -37,13 +37,31 @@ module.exports = function validateAddress(req, res, next) {
       note: 255,
     };
     for (const [field, limit] of Object.entries(textLimits)) {
-      if (data[field] !== undefined && data[field] !== null &&
-        (typeof data[field] !== 'string' || data[field].trim().length === 0 || data[field].length > limit)) {
+      if (data[field] === undefined || data[field] === null) continue;
+      if (field === 'note' && typeof data[field] === 'string' && data[field].trim() === '') {
+        continue;
+      }
+      if (
+        typeof data[field] !== 'string' ||
+        data[field].trim().length === 0 ||
+        data[field].length > limit
+      ) {
         invalid(`${field} must be a non-empty string of at most ${limit} characters`);
       }
     }
-    if (data.receiver_phone !== undefined && !/^\+?[0-9]{8,15}$/.test(data.receiver_phone)) {
-      invalid('receiver_phone must contain 8 to 15 digits, optionally prefixed by +');
+    if (data.receiver_phone !== undefined) {
+      const phone = typeof data.receiver_phone === 'string'
+        ? data.receiver_phone.trim()
+        : '';
+      const normalizedPhone = phone.replace(/[\s-]/g, '');
+      const digitCount = normalizedPhone.replace(/^\+/, '').length;
+      if (
+        !/^\+?[0-9]+$/.test(normalizedPhone) ||
+        digitCount < 8 ||
+        digitCount > 15
+      ) {
+        invalid('receiver_phone must contain 8 to 15 digits, optionally prefixed by +');
+      }
     }
     for (const [field, min, max] of [['latitude', -90, 90], ['longitude', -180, 180]]) {
       if (data[field] !== undefined) {

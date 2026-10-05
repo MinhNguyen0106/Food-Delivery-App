@@ -7,6 +7,7 @@ const validation = require('../validators/orderingValidator');
 
 router.use(authenticate, authorizeRoles('CUSTOMER', 'RESTAURANT'));
 router.get('/', validation.orderList, controller.list);
+router.post('/quote', authorizeRoles('CUSTOMER'), validation.checkout, controller.quote);
 router.post('/checkout', authorizeRoles('CUSTOMER'), validation.checkout, controller.checkout);
 router.get('/:id/history', validation.orderId, controller.history);
 router.post('/:id/confirm', validation.orderId, validation.transition, controller.confirm);

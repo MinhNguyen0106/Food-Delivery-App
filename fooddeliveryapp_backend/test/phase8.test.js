@@ -134,6 +134,7 @@ test('OpenAPI documents Phase 8 endpoints and has no fictitious Admin report rou
     '/api/admin/restaurants/{id}/status',
     '/api/admin/shippers/{id}/account-status',
     '/api/admin/orders/{id}',
+    '/api/orders/quote',
     '/api/deliveries/history',
     '/api/reports/admin/summary',
     '/api/reports/admin/revenue',
@@ -156,6 +157,15 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
   process.env.DB_PASSWORD ||= 'phase8-test';
   process.env.DB_NAME ||= 'phase8_test';
   process.env.JWT_SECRET ||= 'phase8-test-secret-with-at-least-32-bytes';
+  const originalCorsOrigins = process.env.CORS_ORIGINS;
+  process.env.CORS_ORIGINS = 'http://localhost:8092';
+  t.after(() => {
+    if (originalCorsOrigins === undefined) {
+      delete process.env.CORS_ORIGINS;
+    } else {
+      process.env.CORS_ORIGINS = originalCorsOrigins;
+    }
+  });
 
   const authModel = require('../src/models/authModel');
   const originalGetAuthorizationIdentityById = authModel.getAuthorizationIdentityById;
@@ -213,6 +223,43 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
   const docs = await fetch('/api-docs/');
   assert.equal(docs.status, 200);
   assert.match(docs.body, /swagger/i);
+
+  const preflight = await new Promise((resolve, reject) => {
+    http.request({
+      host: '127.0.0.1',
+      port: address.port,
+      path: '/api/categories',
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:8092',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization',
+      },
+    }, (response) => {
+      response.resume();
+      response.on('end', () => resolve(response));
+    }).on('error', reject).end();
+  });
+  assert.equal(preflight.statusCode, 204);
+  assert.equal(preflight.headers['access-control-allow-origin'], 'http://localhost:8092');
+
+  const rejectedOrigin = await new Promise((resolve, reject) => {
+    http.request({
+      host: '127.0.0.1',
+      port: address.port,
+      path: '/api/categories',
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:8093',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization',
+      },
+    }, (response) => {
+      response.resume();
+      response.on('end', () => resolve(response));
+    }).on('error', reject).end();
+  });
+  assert.equal(rejectedOrigin.headers['access-control-allow-origin'], undefined);
 
   const adminApi = await fetch('/api/admin/customers');
   assert.equal(adminApi.status, 401);

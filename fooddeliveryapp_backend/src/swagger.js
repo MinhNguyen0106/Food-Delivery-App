@@ -395,6 +395,30 @@ paths["/api/orders"] = {
     responses: recordResponse("Orders returned")
   }
 };
+paths["/api/orders/quote"] = {
+  post: {
+    summary: "Preview totals for the authenticated Customer's current cart",
+    description: "Requires address_id and optional voucher_code. Uses the same server-side price, delivery-fee and voucher rules as checkout without creating an Order or consuming voucher usage.",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["address_id"],
+            properties: {
+              address_id: { type: "integer", minimum: 1 },
+              note: { type: "string", maxLength: 255 },
+              voucher_code: { type: "string", minLength: 1, maxLength: 50 }
+            },
+            additionalProperties: false
+          }
+        }
+      }
+    },
+    responses: recordResponse("Checkout quote returned")
+  }
+};
 paths["/api/orders/checkout"] = {
   post: {
     summary: "Create an Order from the authenticated Customer's current cart",
@@ -570,7 +594,8 @@ paths["/api/vouchers"] = {
 };
 paths["/api/vouchers/available"] = {
   get: {
-    summary: "List currently active and unused Vouchers (Customer only)",
+    summary: "List active Vouchers with global usage counts and customer redemption status",
+    description: "Each customer may redeem a voucher only once. Checkout and the quote endpoint both enforce this rule.",
     responses: recordResponse("Available Vouchers returned")
   }
 };

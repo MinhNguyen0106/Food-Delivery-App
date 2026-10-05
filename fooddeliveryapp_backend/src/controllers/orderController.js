@@ -33,6 +33,17 @@ exports.checkout = async (req, res, next) => {
   }
 };
 
+exports.quote = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      data: await orderService.quoteCheckout(req.body, req.user),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.history = async (req, res, next) => {
   try {
     return res.status(200).json({

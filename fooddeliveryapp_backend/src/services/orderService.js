@@ -2,6 +2,7 @@ const { randomBytes } = require('crypto');
 const AppError = require('./AppError');
 const { deliveryFeePerKm } = require('../config/env');
 const model = require('../models/orderingModel');
+const voucherModel = require('../models/voucherModel');
 const voucherService = require('./voucherService');
 const { toCents, fromCents } = require('../common/money');
 const workflow = {
@@ -102,6 +103,28 @@ function verifySingleRestaurant(items, restaurantId) {
     throw new AppError('Cart contains food from different restaurants', 409, 'CART_RESTAURANT_MISMATCH');
   }
   for (const item of items) requireAvailableFood(item);
+}
+
+async function getCheckoutContext(connection, customerId, addressId) {
+  const cart = await model.lockCart(connection, customerId);
+  if (!cart) throw new AppError('Cart is empty', 409, 'EMPTY_CART');
+  const address = await model.getAddress(connection, addressId, customerId);
+  if (!address) throw new AppError('Delivery address not found', 404, 'ADDRESS_NOT_FOUND');
+  const items = await model.getCheckoutItems(connection, cart.cart_id);
+  verifySingleRestaurant(items, cart.restaurant_id);
+  const restaurant = await model.getRestaurantForCheckout(connection, cart.restaurant_id);
+  if (!restaurant || restaurant.status !== 'ACTIVE') {
+    throw new AppError('Restaurant is not active', 409, 'RESTAURANT_UNAVAILABLE');
+  }
+  if (Number(restaurant.is_open) !== 1) {
+    throw new AppError('Restaurant is currently closed', 409, 'RESTAURANT_CLOSED');
+  }
+  const subtotalCents = items.reduce(
+    (sum, item) => sum + toCents(item.price, 'Food price') * validateQuantity(item.quantity),
+    0
+  );
+  const deliveryFeeAmount = fromCents(calculateDeliveryFee(restaurant, address) * 100);
+  return { cart, address, items, restaurant, subtotalCents, deliveryFeeAmount };
 }
 
 module.exports = {
@@ -205,42 +228,57 @@ module.exports = {
     });
   },
 
-  async checkout(input, actor) {
+  async quoteCheckout(input, actor) {
     const customerId = requireCustomer(actor);
     const addressId = positiveId(input.address_id, 'address_id');
     return transaction(async (connection) => {
-      const cart = await model.lockCart(connection, customerId);
-      if (!cart) throw new AppError('Cart is empty', 409, 'EMPTY_CART');
-      const address = await model.getAddress(connection, addressId, customerId);
-      if (!address) throw new AppError('Delivery address not found', 404, 'ADDRESS_NOT_FOUND');
-      const items = await model.getCheckoutItems(connection, cart.cart_id);
-      verifySingleRestaurant(items, cart.restaurant_id);
-      const restaurant = await model.getRestaurantForCheckout(connection, cart.restaurant_id);
-      if (!restaurant || restaurant.status !== 'ACTIVE') {
-        throw new AppError('Restaurant is not active', 409, 'RESTAURANT_UNAVAILABLE');
-      }
-      if (Number(restaurant.is_open) !== 1) {
-        throw new AppError('Restaurant is currently closed', 409, 'RESTAURANT_CLOSED');
-      }
-      const subtotalCents = items.reduce(
-        (sum, item) => sum + toCents(item.price, 'Food price') * validateQuantity(item.quantity),
-        0
-      );
-      const deliveryFee = calculateDeliveryFee(restaurant, address);
-      const amountBeforeDiscountCents = subtotalCents + deliveryFee * 100;
+      const context = await getCheckoutContext(connection, customerId, addressId);
+      const subtotal = fromCents(context.subtotalCents);
+      const amountBeforeDiscountCents =
+        context.subtotalCents + toCents(context.deliveryFeeAmount, 'Delivery fee');
       const voucher = input.voucher_code
-        ? await voucherService.applyForCheckout(
+        ? await voucherService.previewForCheckout(
           connection,
           input.voucher_code.trim(),
-          subtotalCents,
-          amountBeforeDiscountCents
+          context.subtotalCents,
+          amountBeforeDiscountCents,
+          customerId
         )
         : null;
       const discountCents = voucher ? voucher.discountCents : 0;
       const totalCents = amountBeforeDiscountCents - discountCents;
-      const subtotal = fromCents(subtotalCents);
+      return {
+        subtotal,
+        deliveryFee: context.deliveryFeeAmount,
+        discount: fromCents(discountCents),
+        totalAmount: fromCents(totalCents),
+        paymentMethod: 'COD',
+        voucherCode: voucher ? voucher.code : null,
+      };
+    });
+  },
+
+  async checkout(input, actor) {
+    const customerId = requireCustomer(actor);
+    const addressId = positiveId(input.address_id, 'address_id');
+    return transaction(async (connection) => {
+      const context = await getCheckoutContext(connection, customerId, addressId);
+      const amountBeforeDiscountCents =
+        context.subtotalCents + toCents(context.deliveryFeeAmount, 'Delivery fee');
+      const voucher = input.voucher_code
+        ? await voucherService.applyForCheckout(
+          connection,
+          input.voucher_code.trim(),
+          context.subtotalCents,
+          amountBeforeDiscountCents,
+          customerId
+        )
+        : null;
+      const discountCents = voucher ? voucher.discountCents : 0;
+      const totalCents = amountBeforeDiscountCents - discountCents;
+      const subtotal = fromCents(context.subtotalCents);
       const totalAmount = fromCents(totalCents);
-      const deliveryFeeAmount = fromCents(deliveryFee * 100);
+      const deliveryFeeAmount = context.deliveryFeeAmount;
       const discountAmount = fromCents(discountCents);
       const orderStatusId = await model.getLookupId(
         connection, 'order_statuses', 'status_name', 'PENDING'
@@ -258,7 +296,7 @@ module.exports = {
       const orderId = await model.createOrder(connection, {
         orderCode,
         customerId,
-        restaurantId: restaurant.restaurant_id,
+        restaurantId: context.restaurant.restaurant_id,
         addressId,
         voucherId: voucher ? voucher.voucherId : null,
         subtotal,
@@ -266,9 +304,9 @@ module.exports = {
         discount: discountAmount,
         totalAmount,
         statusId: orderStatusId,
-        note: input.note ?? address.note ?? null,
+        note: input.note ?? context.address.note ?? null,
       });
-      for (const item of items) {
+      for (const item of context.items) {
         const unitPriceCents = toCents(item.price, 'Food price');
         await model.createOrderDetail(connection, orderId, {
           foodId: item.food_id,
@@ -282,7 +320,7 @@ module.exports = {
       await model.createOrderHistory(
         connection, orderId, orderStatusId, actor.userId, 'Customer created order'
       );
-      await model.clearCart(connection, cart.cart_id);
+      await model.clearCart(connection, context.cart.cart_id);
       return {
         orderId,
         orderCode,
@@ -373,6 +411,15 @@ module.exports = {
       await model.updateOrderStatus(connection, orderId, statusId);
       if (transition.to === 'CANCELLED' || transition.to === 'REJECTED') {
         await model.cancelPendingDelivery(connection, orderId);
+        if (order.voucher_id !== null && order.voucher_id !== undefined) {
+          if (!(await voucherModel.restoreUsage(connection, order.voucher_id))) {
+            throw new AppError(
+              'Voucher usage could not be restored for the cancelled order',
+              409,
+              'VOUCHER_RESTORE_CONFLICT'
+            );
+          }
+        }
       }
       await model.createOrderHistory(
         connection,

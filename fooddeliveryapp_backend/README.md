@@ -10,6 +10,10 @@
 Copy `.env.example` to `.env` and set `DB_HOST`, `DB_PORT`, `DB_USER`,
 `DB_PASSWORD`, `DB_NAME`, and a private `JWT_SECRET` containing at least 32
 bytes. `PORT` defaults to `3000`; `DELIVERY_FEE_PER_KM` defaults to `5000`.
+For browser clients, set `CORS_ORIGINS` to a comma-separated list of exact
+frontend origins (including ports), for example
+`http://localhost:8081,http://localhost:8092`. Requests without a browser
+Origin header remain available to native clients and command-line tools.
 Do not commit `.env`.
 
 Provision the database using the project SQL schema only after reviewing its

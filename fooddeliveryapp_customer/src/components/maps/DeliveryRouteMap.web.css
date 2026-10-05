@@ -1,0 +1,38 @@
+.customer-delivery-route-map {
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  border-radius: 15px;
+  background: #e8e9df;
+}
+
+.customer-delivery-route-map .leaflet-container {
+  width: 100%;
+  height: 100%;
+}
+
+.customer-delivery-route-icon {
+  background: transparent;
+  border: 0;
+}
+
+.customer-delivery-route-icon span {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  font: 700 11px sans-serif;
+  box-shadow: 0 2px 7px #0005;
+}
+
+.customer-delivery-route-icon .restaurant-marker {
+  background: #df7845;
+}
+
+.customer-delivery-route-icon .delivery-marker {
+  background: #34845e;
+}

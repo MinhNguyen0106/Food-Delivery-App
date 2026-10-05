@@ -292,10 +292,11 @@ test('isolated MySQL API integration workflows', {
       body: {
         address_name: 'Integration temporary',
         receiver_name: 'Integration Customer',
-        receiver_phone: '09876543210',
+        receiver_phone: '098 765 43210',
         full_address: 'Integration-only address',
         latitude: 20.994,
         longitude: 105.812,
+        note: '',
         is_default: false,
       },
     });
@@ -734,6 +735,30 @@ test('isolated MySQL API integration workflows', {
       })).status,
       200
     );
+    const quote = await api('POST', '/api/orders/quote', {
+      token: customer,
+      body: { address_id: 1, voucher_code: 'GIAM20K' },
+    });
+    assert.equal(quote.status, 200);
+    assert.equal(quote.body.data.paymentMethod, 'COD');
+    assert.equal(quote.body.data.voucherCode, 'GIAM20K');
+    assert.equal(
+      quote.body.data.totalAmount,
+      quote.body.data.subtotal + quote.body.data.deliveryFee - quote.body.data.discount
+    );
+    const invalidQuote = await api('POST', '/api/orders/quote', {
+      token: customer,
+      body: { address_id: 1, voucher_code: 'NOT-A-REAL-CODE' },
+    });
+    assert.equal(invalidQuote.status, 400);
+    const [unconsumedVoucher] = await pool.execute(
+      'SELECT used_count FROM vouchers WHERE voucher_id = 2'
+    );
+    assert.equal(Number(unconsumedVoucher[0].used_count), 0);
+    const quotedCart = await api('GET', '/api/carts', { token: customer });
+    assert.equal(quotedCart.status, 200);
+    assert.equal(quotedCart.body.data.items.length, 1);
+
     const concurrent = await Promise.all([
       api('POST', '/api/orders/checkout', {
         token: customer,
@@ -748,6 +773,97 @@ test('isolated MySQL API integration workflows', {
     const [usage] = await pool.execute('SELECT used_count, usage_limit FROM vouchers WHERE voucher_id = 2');
     assert.equal(Number(usage[0].used_count), 1);
     assert.equal(Number(usage[0].used_count) <= Number(usage[0].usage_limit), true);
+
+    const oneTimeCode = `ONETIME${Date.now()}`;
+    const [voucherStatus] = await pool.execute(
+      "SELECT status_id FROM voucher_statuses WHERE status_name = 'ACTIVE'"
+    );
+    await pool.execute(
+      `INSERT INTO vouchers
+        (code, discount_value, min_order_value, usage_limit, used_count,
+         status_id, start_date, end_date)
+       VALUES (?, 1, 0, 5, 0, ?, DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 1 DAY),
+         DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 1 YEAR))`,
+      [oneTimeCode, voucherStatus[0].status_id]
+    );
+    await api('DELETE', '/api/carts', { token: customer });
+    assert.equal(
+      (await api('POST', '/api/cart_items', {
+        token: customer,
+        body: { food_id: 1, quantity: 2 },
+      })).status,
+      200
+    );
+    const unusedVoucher = await api('GET', '/api/vouchers/available', { token: customer });
+    const voucherBeforeUse = unusedVoucher.body.data.find((item) => item.code === oneTimeCode);
+    assert.equal(Number(voucherBeforeUse.used_count), 0);
+    assert.equal(Number(voucherBeforeUse.usage_limit), 5);
+    assert.equal(Number(voucherBeforeUse.used_by_customer), 0);
+    const firstVoucherOrder = await api('POST', '/api/orders/checkout', {
+      token: customer,
+      body: { address_id: 1, voucher_code: oneTimeCode },
+    });
+    assert.equal(firstVoucherOrder.status, 201);
+    const usedVouchers = await api('GET', '/api/vouchers/available', { token: customer });
+    const voucherAfterUse = usedVouchers.body.data.find((item) => item.code === oneTimeCode);
+    assert.equal(Number(voucherAfterUse.used_count), 1);
+    assert.equal(Number(voucherAfterUse.used_by_customer), 1);
+    assert.equal(Number(voucherAfterUse.unique_customer_count), 1);
+    assert.equal(
+      (await api('POST', '/api/cart_items', {
+        token: customer,
+        body: { food_id: 1, quantity: 2 },
+      })).status,
+      200
+    );
+    const duplicateUse = await api('POST', '/api/orders/checkout', {
+      token: customer,
+      body: { address_id: 1, voucher_code: oneTimeCode },
+    });
+    assert.equal(duplicateUse.status, 409);
+    assert.match(duplicateUse.body.message, /only once/i);
+    assert.equal(
+      (await api('POST', `/api/orders/${firstVoucherOrder.body.data.orderId}/cancel`, {
+        token: customer,
+        body: {},
+      })).status,
+      200
+    );
+    const restoredVouchers = await api('GET', '/api/vouchers/available', { token: customer });
+    const voucherAfterCancel = restoredVouchers.body.data.find((item) => item.code === oneTimeCode);
+    assert.equal(Number(voucherAfterCancel.used_count), 0);
+    assert.equal(Number(voucherAfterCancel.used_by_customer), 0);
+    assert.equal(Number(voucherAfterCancel.unique_customer_count), 0);
+    await api('DELETE', '/api/carts', { token: customer });
+    assert.equal(
+      (await api('POST', '/api/cart_items', {
+        token: customer,
+        body: { food_id: 1, quantity: 2 },
+      })).status,
+      200
+    );
+    assert.equal(
+      (await api('POST', '/api/orders/checkout', {
+        token: customer,
+        body: { address_id: 1, voucher_code: oneTimeCode },
+      })).status,
+      201
+    );
+    await api('DELETE', '/api/carts', { token: customerB });
+    assert.equal(
+      (await api('POST', '/api/cart_items', {
+        token: customerB,
+        body: { food_id: 4, quantity: 1 },
+      })).status,
+      200
+    );
+    assert.equal(
+      (await api('POST', '/api/orders/checkout', {
+        token: customerB,
+        body: { address_id: 3, voucher_code: oneTimeCode },
+      })).status,
+      201
+    );
 
     assert.equal((await api('GET', '/api/vouchers', { token: admin })).status, 200);
     assert.equal((await api('GET', '/api/reports/admin/summary', { token: admin })).status, 200);

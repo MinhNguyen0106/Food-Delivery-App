@@ -8,10 +8,21 @@ const authorizeResource = require("./middleware/authorizeResource");
 const { uploadsRoot } = require("./config/uploads");
 const app = express();
 const cors = require("cors");
+const allowedOrigins = new Set(
+  (
+    process.env.CORS_ORIGINS ||
+    "http://localhost:8081,http://localhost:8091,http://localhost:8092"
+  )
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
 
 app.use(
   cors({
-    origin: "http://localhost:8081", // Thay bằng origin trên thanh địa chỉ trình duyệt
+    origin(origin, callback) {
+      callback(null, !origin || allowedOrigins.has(origin));
+    },
   }),
 );
 app.use(express.json());

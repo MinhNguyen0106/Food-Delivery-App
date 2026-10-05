@@ -29,7 +29,7 @@ module.exports = {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [customerId, data.address_name.trim(), data.receiver_name.trim(),
         data.receiver_phone.trim(), data.full_address.trim(), data.latitude,
-        data.longitude, data.note ?? null, data.is_default ? 1 : 0]
+        data.longitude, data.note?.trim() || null, data.is_default ? 1 : 0]
     );
     return result.insertId;
   },
@@ -50,6 +50,7 @@ module.exports = {
       if (['address_name', 'receiver_name', 'receiver_phone', 'full_address'].includes(field)) {
         return data[field].trim();
       }
+      if (field === 'note') return data[field]?.trim() || null;
       return data[field];
     });
     const [result] = await connection.execute(

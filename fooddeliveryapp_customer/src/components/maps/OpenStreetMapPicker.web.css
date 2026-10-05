@@ -1,0 +1,17 @@
+.customer-osm-marker {
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: #365c4a;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: rotate(-45deg);
+}
+
+.customer-osm-marker span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}

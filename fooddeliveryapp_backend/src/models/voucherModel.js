@@ -15,17 +15,34 @@ module.exports = {
     return rows;
   },
 
-  async listAvailable(connection = db) {
+  async listAvailable(customerId, connection = db) {
     const [rows] = await connection.execute(
       `SELECT voucher.code, voucher.discount_value, voucher.min_order_value,
-        voucher.start_date, voucher.end_date
+        voucher.usage_limit, voucher.used_count, voucher.start_date, voucher.end_date,
+        EXISTS (
+          SELECT 1 FROM orders redeemed
+          JOIN order_statuses redeemed_status
+            ON redeemed_status.status_id = redeemed.status_id
+          WHERE redeemed.voucher_id = voucher.voucher_id
+            AND redeemed.customer_id = ?
+            AND redeemed_status.status_name NOT IN ('CANCELLED', 'REJECTED')
+        ) AS used_by_customer,
+        (
+          SELECT COUNT(DISTINCT redeemed_customer.customer_id)
+          FROM orders redeemed_customer
+          JOIN order_statuses redeemed_customer_status
+            ON redeemed_customer_status.status_id = redeemed_customer.status_id
+          WHERE redeemed_customer.voucher_id = voucher.voucher_id
+            AND redeemed_customer_status.status_name NOT IN ('CANCELLED', 'REJECTED')
+        ) AS unique_customer_count
        FROM vouchers voucher
        JOIN voucher_statuses status ON status.status_id = voucher.status_id
        WHERE status.status_name = 'ACTIVE'
          AND voucher.used_count < voucher.usage_limit
          AND voucher.start_date <= CURRENT_TIMESTAMP
          AND voucher.end_date >= CURRENT_TIMESTAMP
-       ORDER BY voucher.end_date, voucher.code`
+       ORDER BY voucher.end_date, voucher.code`,
+      [customerId]
     );
     return rows;
   },
@@ -69,6 +86,34 @@ module.exports = {
     return rows[0] || null;
   },
 
+  async getByCode(connection, code) {
+    const [rows] = await connection.execute(
+      `SELECT voucher.voucher_id, voucher.code, voucher.discount_value,
+        voucher.min_order_value, voucher.usage_limit, voucher.used_count,
+        status.status_name AS status,
+        (CURRENT_TIMESTAMP BETWEEN voucher.start_date AND voucher.end_date) AS is_in_period
+       FROM vouchers voucher
+       JOIN voucher_statuses status ON status.status_id = voucher.status_id
+       WHERE voucher.code = ?
+       LIMIT 1`,
+      [code]
+    );
+    return rows[0] || null;
+  },
+
+  async hasCustomerUsedVoucher(connection, customerId, voucherId) {
+    const [rows] = await connection.execute(
+      `SELECT order_id
+       FROM orders redeemed
+       JOIN order_statuses status ON status.status_id = redeemed.status_id
+       WHERE redeemed.customer_id = ? AND redeemed.voucher_id = ?
+         AND status.status_name NOT IN ('CANCELLED', 'REJECTED')
+       LIMIT 1`,
+      [customerId, voucherId]
+    );
+    return rows.length > 0;
+  },
+
   async incrementUsage(connection, voucherId) {
     const [result] = await connection.execute(
       `UPDATE vouchers
@@ -80,6 +125,16 @@ module.exports = {
          )
          AND start_date <= CURRENT_TIMESTAMP
          AND end_date >= CURRENT_TIMESTAMP`,
+      [voucherId]
+    );
+    return result.affectedRows === 1;
+  },
+
+  async restoreUsage(connection, voucherId) {
+    const [result] = await connection.execute(
+      `UPDATE vouchers
+       SET used_count = used_count - 1
+       WHERE voucher_id = ? AND used_count > 0`,
       [voucherId]
     );
     return result.affectedRows === 1;
