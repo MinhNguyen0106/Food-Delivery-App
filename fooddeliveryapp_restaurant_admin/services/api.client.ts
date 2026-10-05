@@ -27,14 +27,15 @@ export class ApiClientError extends Error {
 }
 
 const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"
+  process.env.NEXT_PUBLIC_API_URL ?? "/api-proxy"
 ).replace(/\/+$/, "");
 
 function requestUrl(
   path: string,
   params?: ApiRequestConfig["params"],
 ): string {
-  const url = new URL(`${API_URL}${path}`);
+  const origin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
+  const url = new URL(`${API_URL}${path}`, origin);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
