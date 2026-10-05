@@ -12,6 +12,26 @@ export interface AdminProfileUpdate {
   fullName?: string;
 }
 
+export interface RegisterCustomerInput {
+  email: string;
+  password: string;
+  fullName: string;
+  phone: string;
+  dateOfBirth?: string | null;
+}
+
+export interface RegisterCustomerResult {
+  user: {
+    userId: number;
+    customerId: number;
+    email: string;
+    role: "CUSTOMER";
+    fullName: string;
+    phone: string;
+    dateOfBirth: string | null;
+  };
+}
+
 export const authService = {
   async login(email: string, password: string): Promise<LoginResult> {
     const result = unwrapResponse(
@@ -22,6 +42,12 @@ export const authService = {
       window.localStorage.removeItem("token");
     }
     return result;
+  },
+
+  async registerCustomer(input: RegisterCustomerInput): Promise<RegisterCustomerResult> {
+    return unwrapResponse(
+      await apiClient.post<RegisterCustomerResult>("/auth/register", input),
+    );
   },
 
   async getProfile(): Promise<ActorProfile> {

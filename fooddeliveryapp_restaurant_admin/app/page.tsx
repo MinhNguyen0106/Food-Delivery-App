@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { authService } from "@/services/auth.service";
 
 type AccountType = "admin" | "restaurant";
 
@@ -40,14 +42,39 @@ function BrandMark() {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [accountType, setAccountType] = useState<AccountType>("restaurant");
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const copy = accountCopy[accountType];
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Giao diện chưa được kết nối với dịch vụ xác thực.");
+    setBusy(true);
+    setMessage("");
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const result = await authService.login(
+        String(form.get("email") ?? ""),
+        String(form.get("password") ?? ""),
+      );
+      const expectedRole = accountType === "admin" ? "ADMIN" : "RESTAURANT";
+      if (result.user.role !== expectedRole) {
+        window.localStorage.removeItem("accessToken");
+        window.localStorage.removeItem("token");
+        setMessage(accountType === "admin"
+          ? "Tài khoản này không có quyền quản trị Admin."
+          : "Tài khoản này không thuộc nhà hàng.");
+        return;
+      }
+      router.replace(accountType === "admin" ? "/admin/dashboard" : "/restaurant/dashboard");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Đăng nhập thất bại.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function selectAccountType(type: AccountType) {
@@ -232,8 +259,8 @@ export default function Home() {
                 </label>
               </div>
 
-              <button className="submit-button" type="submit">
-                Đăng nhập
+              <button className="submit-button" type="submit" disabled={busy}>
+                {busy ? "Đang xác thực..." : "Đăng nhập"}
                 <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M4 10h12m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
                 </svg>
