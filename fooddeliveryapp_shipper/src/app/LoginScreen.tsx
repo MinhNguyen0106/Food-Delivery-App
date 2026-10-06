@@ -319,7 +319,11 @@ export default function LoginScreen() {
         router.replace("/home");
       } else {
         const errorMsg = result.message || "Đăng nhập thất bại.";
-        // Hiển thị errorMsg như phần code hiện tại
+        if (Platform.OS === "web") {
+          window.alert(errorMsg);
+        } else {
+          Alert.alert("Đăng nhập thất bại", errorMsg);
+        }
       }
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);
@@ -397,13 +401,12 @@ export default function LoginScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* TÀI KHOẢN TEST */}
+      {/* THÔNG TIN TÀI KHOẢN */}
       <View style={styles.hintBox}>
-        <Text style={styles.hintTitle}>Tài khoản thử nghiệm (CSDL):</Text>
-
-        <Text style={styles.hintText}>Email: shipper1@example.com</Text>
-
-        <Text style={styles.hintText}>Mật khẩu: HASH_SHIPPER_1</Text>
+        <Text style={styles.hintTitle}>Tài khoản Shipper</Text>
+        <Text style={styles.hintText}>
+          Sử dụng email và mật khẩu được cấp cho tài khoản Shipper.
+        </Text>
       </View>
     </View>
   );

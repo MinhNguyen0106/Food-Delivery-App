@@ -1,5 +1,6 @@
 const AppError = require('./AppError');
 const model = require('../models/adminModel');
+const bcrypt = require('bcryptjs');
 
 function requireAdmin(actor) {
   if (!actor || actor.role !== 'ADMIN') {
@@ -19,6 +20,7 @@ async function statusId(connection, table, status) {
   const allowed = {
     user_statuses: ['ACTIVE', 'LOCKED'],
     restaurant_statuses: ['ACTIVE', 'PENDING', 'REJECTED', 'SUSPENDED'],
+    shipper_statuses: ['OFFLINE', 'ONLINE', 'BUSY'],
   };
   if (!allowed[table] || !allowed[table].includes(status)) {
     throw new AppError('Requested status is not supported', 400, 'VALIDATION_ERROR');
@@ -29,6 +31,97 @@ async function statusId(connection, table, status) {
   );
   if (!rows[0]) throw new AppError('Status configuration is missing', 500, 'CONFIGURATION_ERROR');
   return rows[0].status_id;
+}
+
+async function createManagedAccount(input, actor, resource) {
+  requireAdmin(actor);
+  const email = input.email.trim().toLowerCase();
+  const passwordHash = await bcrypt.hash(input.password, 12);
+  const connection = await model.pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const roleName = resource === 'shipper' ? 'SHIPPER' : 'RESTAURANT';
+    const [roles] = await connection.execute(
+      'SELECT role_id FROM user_roles WHERE role_name = ? LIMIT 1',
+      [roleName]
+    );
+    const [activeStatuses] = await connection.execute(
+      'SELECT status_id FROM user_statuses WHERE status_name = ? LIMIT 1',
+      ['ACTIVE']
+    );
+    if (!roles[0] || !activeStatuses[0]) {
+      throw new AppError('Required account configuration is missing', 500, 'CONFIGURATION_ERROR');
+    }
+    const [userResult] = await connection.execute(
+      'INSERT INTO users (role_id, email, password_hash, status_id) VALUES (?, ?, ?, ?)',
+      [roles[0].role_id, email, passwordHash, activeStatuses[0].status_id]
+    );
+
+    let profileId;
+    let result;
+    if (resource === 'shipper') {
+      const availabilityId = await statusId(connection, 'shipper_statuses', 'OFFLINE');
+      [result] = await connection.execute(
+        'INSERT INTO shippers (user_id, full_name, phone, status_id) VALUES (?, ?, ?, ?)',
+        [userResult.insertId, input.fullName.trim(), input.phone.trim(), availabilityId]
+      );
+      profileId = result.insertId;
+    } else {
+      const restaurantStatusId = await statusId(connection, 'restaurant_statuses', 'PENDING');
+      [result] = await connection.execute(
+        `INSERT INTO restaurants
+          (user_id, name, address, phone, description, status_id, latitude, longitude, opening_time, closing_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userResult.insertId,
+          input.name.trim(),
+          input.address.trim(),
+          input.phone.trim(),
+          input.description?.trim() || null,
+          restaurantStatusId,
+          input.latitude,
+          input.longitude,
+          input.openingTime || null,
+          input.closingTime || null,
+        ]
+      );
+      profileId = result.insertId;
+    }
+
+    await connection.commit();
+    return resource === 'shipper'
+      ? {
+          userId: userResult.insertId,
+          shipperId: profileId,
+          email,
+          role: 'SHIPPER',
+          fullName: input.fullName.trim(),
+          phone: input.phone.trim(),
+          accountStatus: 'ACTIVE',
+          availability: 'OFFLINE',
+        }
+      : {
+          userId: userResult.insertId,
+          restaurantId: profileId,
+          email,
+          role: 'RESTAURANT',
+          name: input.name.trim(),
+          status: 'PENDING',
+          accountStatus: 'ACTIVE',
+        };
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch (rollbackError) {
+      console.error('Database transaction rollback failed', rollbackError);
+    }
+    if (error.code === 'ER_DUP_ENTRY') {
+      throw new AppError('Email or phone is already registered', 409, 'ACCOUNT_EXISTS');
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 async function setAccountStatus(resource, idValue, status, actor) {
@@ -105,6 +198,9 @@ module.exports = {
     requireAdmin(actor);
     return model.listRestaurants(filter);
   },
+  createRestaurant(input, actor) {
+    return createManagedAccount(input, actor, 'restaurant');
+  },
   async getRestaurant(idValue, actor) {
     requireAdmin(actor);
     const restaurant = await model.getRestaurant(positiveId(idValue, 'restaurant_id'));
@@ -150,6 +246,9 @@ module.exports = {
   async listShippers(filter, actor) {
     requireAdmin(actor);
     return model.listShippers(filter);
+  },
+  createShipper(input, actor) {
+    return createManagedAccount(input, actor, 'shipper');
   },
   async getShipper(idValue, actor) {
     requireAdmin(actor);
