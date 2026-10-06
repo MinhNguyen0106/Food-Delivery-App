@@ -824,6 +824,26 @@ const adminDetail = (summary, itemName) => ({
     security: [{ bearerAuth: [] }]
   }
 });
+const adminCreateAccount = (summary, requestSchema, resultSchema) => ({
+  post: {
+    tags: ["Admin"],
+    summary,
+    description: "Admin only. Creates the user account and its role profile atomically. Passwords are hashed before storage.",
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: requestSchema } }
+    },
+    responses: {
+      201: response("Account and role profile created", envelope(resultSchema)),
+      400: response("Validation error", { $ref: "#/components/schemas/Error" }),
+      401: response("Authentication required", { $ref: "#/components/schemas/Error" }),
+      403: response("Administrator role required", { $ref: "#/components/schemas/Error" }),
+      409: response("Email or phone is already registered", { $ref: "#/components/schemas/Error" }),
+      500: response("Internal server error", { $ref: "#/components/schemas/Error" })
+    },
+    security: [{ bearerAuth: [] }]
+  }
+});
 
 for (const [path, summary, statuses] of [
   ["/api/admin/customers", "List Customers", ["ACTIVE", "LOCKED"]],
@@ -840,6 +860,74 @@ for (const [path, summary, statuses] of [
   }
   paths[path] = adminCollection(summary, parameters);
 }
+
+paths["/api/admin/restaurants"] = {
+  ...paths["/api/admin/restaurants"],
+  ...adminCreateAccount(
+    "Create a Restaurant account",
+    {
+      type: "object",
+      required: ["email", "password", "name", "address", "phone", "latitude", "longitude"],
+      properties: {
+        email: { type: "string", format: "email", maxLength: 150 },
+        password: { type: "string", minLength: 8, maxLength: 72 },
+        name: { type: "string", minLength: 1, maxLength: 150 },
+        address: { type: "string", minLength: 1, maxLength: 255 },
+        phone: { type: "string", pattern: "^\\+?[0-9]{8,15}$" },
+        description: { type: "string", maxLength: 5000 },
+        latitude: { type: "number", minimum: -90, maximum: 90 },
+        longitude: { type: "number", minimum: -180, maximum: 180 },
+        openingTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$" },
+        closingTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d)?$" }
+      },
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      required: ["userId", "restaurantId", "email", "role", "name", "status", "accountStatus"],
+      properties: {
+        userId: { type: "integer" },
+        restaurantId: { type: "integer" },
+        email: { type: "string" },
+        role: { type: "string", enum: ["RESTAURANT"] },
+        name: { type: "string" },
+        status: { type: "string", enum: ["PENDING"] },
+        accountStatus: { type: "string", enum: ["ACTIVE"] }
+      }
+    }
+  )
+};
+paths["/api/admin/shippers"] = {
+  ...paths["/api/admin/shippers"],
+  ...adminCreateAccount(
+    "Create a Shipper account",
+    {
+      type: "object",
+      required: ["email", "password", "fullName", "phone"],
+      properties: {
+        email: { type: "string", format: "email", maxLength: 150 },
+        password: { type: "string", minLength: 8, maxLength: 72 },
+        fullName: { type: "string", minLength: 1, maxLength: 100 },
+        phone: { type: "string", pattern: "^\\+?[0-9]{8,15}$" }
+      },
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      required: ["userId", "shipperId", "email", "role", "fullName", "phone", "accountStatus", "availability"],
+      properties: {
+        userId: { type: "integer" },
+        shipperId: { type: "integer" },
+        email: { type: "string" },
+        role: { type: "string", enum: ["SHIPPER"] },
+        fullName: { type: "string" },
+        phone: { type: "string" },
+        accountStatus: { type: "string", enum: ["ACTIVE"] },
+        availability: { type: "string", enum: ["OFFLINE"] }
+      }
+    }
+  )
+};
 
 for (const [path, summary, itemName, statuses, action] of [
   ["/api/admin/customers/{id}", "Get Customer", "Customer", ["ACTIVE", "LOCKED"], "status"],

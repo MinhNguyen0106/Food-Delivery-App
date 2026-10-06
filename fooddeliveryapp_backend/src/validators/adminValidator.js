@@ -121,6 +121,100 @@ function statusBody(req, statuses) {
   }
 }
 
+function createAccountBody(req, fields) {
+  const body = req.body;
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).some((field) => !fields.includes(field))
+  ) {
+    invalid('Request body contains unsupported fields');
+  }
+  return body;
+}
+
+function requiredText(value, field, maxLength) {
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    value.trim().length > maxLength
+  ) {
+    invalid(`${field} is required and must be at most ${maxLength} characters`);
+  }
+}
+
+function validateCredentials(body) {
+  requiredText(body.email, 'email', 150);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+    invalid('email is invalid');
+  }
+  if (
+    typeof body.password !== 'string' ||
+    body.password.length < 8 ||
+    Buffer.byteLength(body.password, 'utf8') > 72
+  ) {
+    invalid('password must be between 8 and 72 bytes and at least 8 characters');
+  }
+  requiredText(body.phone, 'phone', 20);
+  if (!/^\+?[0-9]{8,15}$/.test(body.phone.trim())) {
+    invalid('phone is invalid');
+  }
+}
+
+exports.createShipper = run((req) => {
+  const body = createAccountBody(req, ['email', 'password', 'fullName', 'phone']);
+  validateCredentials(body);
+  requiredText(body.fullName, 'fullName', 100);
+});
+
+exports.createRestaurant = run((req) => {
+  const body = createAccountBody(req, [
+    'email',
+    'password',
+    'name',
+    'address',
+    'phone',
+    'description',
+    'latitude',
+    'longitude',
+    'openingTime',
+    'closingTime',
+  ]);
+  validateCredentials(body);
+  requiredText(body.name, 'name', 150);
+  requiredText(body.address, 'address', 255);
+  for (const field of ['latitude', 'longitude']) {
+    if (typeof body[field] !== 'number' || !Number.isFinite(body[field])) {
+      invalid(`${field} must be a valid number`);
+    }
+  }
+  if (body.latitude < -90 || body.latitude > 90) {
+    invalid('latitude must be between -90 and 90');
+  }
+  if (body.longitude < -180 || body.longitude > 180) {
+    invalid('longitude must be between -180 and 180');
+  }
+  if (
+    body.description !== undefined &&
+    body.description !== null &&
+    (typeof body.description !== 'string' || body.description.length > 5000)
+  ) {
+    invalid('description must be at most 5000 characters');
+  }
+  for (const field of ['openingTime', 'closingTime']) {
+    if (
+      body[field] !== undefined &&
+      body[field] !== null &&
+      body[field] !== '' &&
+      (typeof body[field] !== 'string' ||
+        !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(body[field]))
+    ) {
+      invalid(`${field} must use HH:mm or HH:mm:ss`);
+    }
+  }
+});
+
 exports.customerStatus = run((req) => statusBody(req, ['ACTIVE', 'LOCKED']));
 exports.shipperStatus = run((req) => statusBody(req, ['ACTIVE', 'LOCKED']));
 exports.restaurantStatus = run((req) =>

@@ -31,6 +31,47 @@ export interface AdminOrderFilters {
   to?: string;
 }
 
+export interface CreateAdminShipperInput {
+  email: string;
+  password: string;
+  fullName: string;
+  phone: string;
+}
+
+export interface CreateAdminShipperResult {
+  userId: number;
+  shipperId: number;
+  email: string;
+  role: "SHIPPER";
+  fullName: string;
+  phone: string;
+  accountStatus: "ACTIVE";
+  availability: "OFFLINE";
+}
+
+export interface CreateAdminRestaurantInput {
+  email: string;
+  password: string;
+  name: string;
+  address: string;
+  phone: string;
+  description?: string;
+  latitude: number;
+  longitude: number;
+  openingTime?: string;
+  closingTime?: string;
+}
+
+export interface CreateAdminRestaurantResult {
+  userId: number;
+  restaurantId: number;
+  email: string;
+  role: "RESTAURANT";
+  name: string;
+  status: "PENDING";
+  accountStatus: "ACTIVE";
+}
+
 export const adminService = {
   async getCustomers(
     filters: CustomerFilters = {},
@@ -76,6 +117,17 @@ export const adminService = {
     );
   },
 
+  async createRestaurant(
+    input: CreateAdminRestaurantInput,
+  ): Promise<CreateAdminRestaurantResult> {
+    return unwrapResponse(
+      await apiClient.post<CreateAdminRestaurantResult>(
+        "/admin/restaurants",
+        input,
+      ),
+    );
+  },
+
   async setRestaurantStatus(
     id: number,
     status: NonNullable<RestaurantFilters["status"]>,
@@ -110,6 +162,14 @@ export const adminService = {
   async getShipper(id: number): Promise<ShipperAdminRecord> {
     return unwrapResponse(
       await apiClient.get<ShipperAdminRecord>(`/admin/shippers/${id}`),
+    );
+  },
+
+  async createShipper(
+    input: CreateAdminShipperInput,
+  ): Promise<CreateAdminShipperResult> {
+    return unwrapResponse(
+      await apiClient.post<CreateAdminShipperResult>("/admin/shippers", input),
     );
   },
 

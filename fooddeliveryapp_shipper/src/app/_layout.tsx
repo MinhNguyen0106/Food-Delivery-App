@@ -1,12 +1,12 @@
-import React from "react";
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="LoginScreen"
       screenOptions={{
-        tabBarActiveTintColor: "#FF5722", // Màu cam chủ đạo cho app giao đồ ăn
+        tabBarActiveTintColor: "#FF5722",
         tabBarInactiveTintColor: "#757575",
         tabBarStyle: {
           height: 60,
@@ -28,7 +28,17 @@ export default function TabLayout() {
           title: "Trang chủ",
           headerTitle: "Shipper Home",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="bicycle" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="giaohang"
+        options={{
+          title: "Giao hàng",
+          headerTitle: "Giao hàng",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="bicycle-outline" size={size} color={color} />
           ),
         }}
       />
@@ -50,6 +60,14 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="LoginScreen"
+        options={{
+          href: null,
+          title: "Đăng nhập",
+          tabBarStyle: { display: "none" },
         }}
       />
     </Tabs>

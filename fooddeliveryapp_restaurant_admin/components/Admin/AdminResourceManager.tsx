@@ -17,30 +17,48 @@ import type { CreateAdminCategoryPayload } from "@/types/admin";
 
 export type AdminResource = "categories" | "customers" | "restaurants" | "shippers" | "orders" | "reviews" | "vouchers";
 type ResourceRow = Record<string, unknown>;
-type Field = { key: string; label: string; type?: "text" | "password" | "date" | "number" | "textarea" | "checkbox" | "select" | "datetime-local"; required?: boolean; options?: string[] };
+type Field = { key: string; label: string; type?: "text" | "email" | "tel" | "password" | "date" | "time" | "number" | "textarea" | "checkbox" | "select" | "datetime-local"; required?: boolean; min?: number; max?: number; step?: number | "any"; minLength?: number; maxLength?: number; options?: string[] };
 type Column = { key: string; label: string };
 
 const configurations: Record<AdminResource, { title: string; description: string; columns: Column[]; fields?: Field[]; limitation?: string }> = {
   categories: {
     title: "Danh mục món ăn", description: "Quản lý danh mục dùng chung trên nền tảng.",
-    columns: [{ key: "category_id", label: "Mã" }, { key: "name", label: "Tên danh mục" }, { key: "description", label: "Mô tả" }, { key: "is_active", label: "Trạng thái" }, { key: "created_at", label: "Ngày tạo" }],
+    columns: [{ key: "name", label: "Tên danh mục" }, { key: "description", label: "Mô tả" }, { key: "is_active", label: "Trạng thái" }, { key: "created_at", label: "Ngày tạo" }],
     fields: [{ key: "name", label: "Tên danh mục", required: true }, { key: "description", label: "Mô tả", type: "textarea" }, { key: "is_active", label: "Đang hoạt động", type: "checkbox" }],
   },
   customers: {
     title: "Khách hàng", description: "Tìm kiếm và kiểm soát trạng thái tài khoản khách hàng.",
-    columns: [{ key: "customer_id", label: "Mã" }, { key: "full_name", label: "Khách hàng" }, { key: "email", label: "Email" }, { key: "phone", label: "Điện thoại" }, { key: "account_status", label: "Tài khoản" }, { key: "created_at", label: "Ngày tạo" }],
+    columns: [{ key: "full_name", label: "Khách hàng" }, { key: "email", label: "Email" }, { key: "phone", label: "Điện thoại" }, { key: "account_status", label: "Tài khoản" }, { key: "created_at", label: "Ngày tạo" }],
     fields: [{ key: "fullName", label: "Họ và tên", required: true }, { key: "email", label: "Email", required: true }, { key: "phone", label: "Điện thoại", required: true }, { key: "password", label: "Mật khẩu tạm thời", type: "password", required: true }, { key: "dateOfBirth", label: "Ngày sinh", type: "date" }],
     limitation: "Có thể tạo khách hàng qua API đăng ký. Backend Admin chỉ hỗ trợ khóa/mở khóa; chưa có API sửa hồ sơ hoặc xóa tài khoản.",
   },
   restaurants: {
     title: "Nhà hàng", description: "Theo dõi hồ sơ đối tác và trạng thái hoạt động.",
-    columns: [{ key: "restaurant_id", label: "Mã" }, { key: "name", label: "Nhà hàng" }, { key: "address", label: "Địa chỉ" }, { key: "phone", label: "Điện thoại" }, { key: "status", label: "Trạng thái nhà hàng" }, { key: "account_status", label: "Tài khoản" }],
-    limitation: "Backend hiện chỉ cung cấp xem danh sách/chi tiết và chuyển trạng thái nhà hàng; chưa có API tạo, sửa hồ sơ hay xóa.",
+    columns: [{ key: "name", label: "Nhà hàng" }, { key: "address", label: "Địa chỉ" }, { key: "phone", label: "Điện thoại" }, { key: "status", label: "Trạng thái nhà hàng" }, { key: "account_status", label: "Tài khoản" }],
+    fields: [
+      { key: "name", label: "Tên nhà hàng", required: true },
+      { key: "email", label: "Email đăng nhập", type: "email", required: true },
+      { key: "password", label: "Mật khẩu", type: "password", required: true, minLength: 8, maxLength: 72 },
+      { key: "phone", label: "Điện thoại", type: "tel", required: true },
+      { key: "address", label: "Địa chỉ", required: true },
+      { key: "latitude", label: "Vĩ độ", type: "number", required: true, min: -90, max: 90, step: 0.0000001 },
+      { key: "longitude", label: "Kinh độ", type: "number", required: true, min: -180, max: 180, step: 0.0000001 },
+      { key: "description", label: "Mô tả", type: "textarea" },
+      { key: "openingTime", label: "Giờ mở cửa", type: "time" },
+      { key: "closingTime", label: "Giờ đóng cửa", type: "time" },
+    ],
+    limitation: "Tài khoản nhà hàng được tạo ở trạng thái hoạt động và nhà hàng chờ duyệt.",
   },
   shippers: {
     title: "Đội ngũ shipper", description: "Theo dõi tài khoản và tình trạng sẵn sàng giao hàng.",
-    columns: [{ key: "shipper_id", label: "Mã" }, { key: "full_name", label: "Shipper" }, { key: "email", label: "Email" }, { key: "phone", label: "Điện thoại" }, { key: "availability", label: "Sẵn sàng" }, { key: "account_status", label: "Tài khoản" }],
-    limitation: "Backend hiện chỉ cung cấp xem danh sách/chi tiết và khóa hoặc mở khóa shipper; chưa có API tạo, sửa hồ sơ hay xóa.",
+    columns: [{ key: "full_name", label: "Shipper" }, { key: "email", label: "Email" }, { key: "phone", label: "Điện thoại" }, { key: "availability", label: "Sẵn sàng" }, { key: "account_status", label: "Tài khoản" }],
+    fields: [
+      { key: "fullName", label: "Họ và tên", required: true },
+      { key: "email", label: "Email đăng nhập", type: "email", required: true },
+      { key: "password", label: "Mật khẩu", type: "password", required: true, minLength: 8, maxLength: 72 },
+      { key: "phone", label: "Điện thoại", type: "tel", required: true },
+    ],
+    limitation: "Tài khoản shipper được tạo ở trạng thái hoạt động và sẵn sàng giao hàng ban đầu là ngoại tuyến.",
   },
   orders: {
     title: "Đơn hàng", description: "Tra cứu đơn và kiểm tra chi tiết thanh toán, giao hàng, lịch sử.",
@@ -54,7 +72,7 @@ const configurations: Record<AdminResource, { title: string; description: string
   },
   vouchers: {
     title: "Mã giảm giá", description: "Quản lý mã, điều kiện sử dụng và thời hạn khuyến mãi.",
-    columns: [{ key: "voucher_id", label: "Mã" }, { key: "code", label: "Voucher" }, { key: "discount_value", label: "Giảm giá" }, { key: "min_order_value", label: "Đơn tối thiểu" }, { key: "used_count", label: "Đã dùng" }, { key: "usage_limit", label: "Lượt dùng" }, { key: "status", label: "Trạng thái" }, { key: "end_date", label: "Hết hạn" }],
+    columns: [{ key: "discount_value", label: "Giảm giá" }, { key: "min_order_value", label: "Đơn tối thiểu" }, { key: "used_count", label: "Đã dùng" }, { key: "usage_limit", label: "Lượt dùng" }, { key: "status", label: "Trạng thái" }, { key: "end_date", label: "Hết hạn" }],
     fields: [
       { key: "code", label: "Mã voucher", required: true },
       { key: "discount_value", label: "Giá trị giảm", type: "number", required: true },
@@ -146,6 +164,8 @@ export default function AdminResourceManager({ resource }: { resource: AdminReso
     setEditing(null);
     if (resource === "categories") setValues({ name: "", description: "", is_active: true });
     else if (resource === "customers") setValues({ fullName: "", email: "", phone: "", password: "", dateOfBirth: "" });
+    else if (resource === "shippers") setValues({ fullName: "", email: "", phone: "", password: "" });
+    else if (resource === "restaurants") setValues({ name: "", email: "", phone: "", password: "", address: "", latitude: "", longitude: "", description: "", openingTime: "", closingTime: "" });
     else setValues({ code: "", discount_value: "", min_order_value: "0", usage_limit: "1", status: "ACTIVE", start_date: "", end_date: "" });
     setCreating(true);
   }
@@ -170,6 +190,26 @@ export default function AdminResourceManager({ resource }: { resource: AdminReso
           password: String(values.password),
           dateOfBirth: String(values.dateOfBirth || "") || null,
         });
+      } else if (resource === "shippers") {
+        await adminService.createShipper({
+          fullName: String(values.fullName).trim(),
+          email: String(values.email).trim(),
+          phone: String(values.phone).trim(),
+          password: String(values.password),
+        });
+      } else if (resource === "restaurants") {
+        await adminService.createRestaurant({
+          name: String(values.name).trim(),
+          email: String(values.email).trim(),
+          phone: String(values.phone).trim(),
+          password: String(values.password),
+          address: String(values.address).trim(),
+          latitude: Number(values.latitude),
+          longitude: Number(values.longitude),
+          description: String(values.description ?? "").trim(),
+          openingTime: String(values.openingTime || "") || undefined,
+          closingTime: String(values.closingTime || "") || undefined,
+        });
       } else if (resource === "categories") {
         const payload: CreateAdminCategoryPayload = { name: String(values.name).trim(), description: String(values.description ?? "").trim() || null, is_active: Boolean(values.is_active) };
         if (editing) await categoryService.updateCategory(rowId(resource, editing), payload);
@@ -184,7 +224,7 @@ export default function AdminResourceManager({ resource }: { resource: AdminReso
       }
       setCreating(false);
       setEditing(null);
-      setNotice(editing ? "Đã cập nhật dữ liệu." : "Đã tạo dữ liệu.");
+      setNotice(resource === "shippers" ? "Đã tạo tài khoản shipper." : resource === "restaurants" ? "Đã tạo tài khoản nhà hàng." : editing ? "Đã cập nhật dữ liệu." : "Đã tạo dữ liệu.");
       setRefreshKey((key) => key + 1);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể lưu dữ liệu."); }
     finally { setSaving(false); }
@@ -276,10 +316,10 @@ export default function AdminResourceManager({ resource }: { resource: AdminReso
         <div className="flex items-start justify-between gap-4"><div><p className="text-xs font-semibold tracking-[0.13em] text-[#a06a3d]">{config.title.toUpperCase()}</p><h2 id="resource-form-title" className="mt-1 text-xl font-semibold">{editing ? "Chỉnh sửa thông tin" : "Thêm bản ghi mới"}</h2></div><button aria-label="Đóng" onClick={() => { setCreating(false); setEditing(null); }} className="grid h-8 w-8 place-items-center rounded text-xl text-[#77847b] hover:bg-[#f2f5f1]">×</button></div>
         <form onSubmit={submitForm} className="mt-6 space-y-4">
           {config.fields.map((field) => <label key={field.key} className={`block text-sm font-medium text-[#405148] ${field.type === "checkbox" ? "flex items-center gap-3" : ""}`}>
-            {field.type === "checkbox" ? <><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues({ ...values, [field.key]: event.target.checked })} className="h-4 w-4 accent-[#286344]" />{field.label}</> : <>{field.label}{field.type === "textarea" ? <textarea required={field.required} value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} rows={3} className="mt-1.5 block w-full rounded border border-[#d7e0d8] px-3 py-2 outline-none focus:border-[#39775a]" /> : field.type === "select" ? <select value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} className="mt-1.5 block h-10 w-full rounded border border-[#d7e0d8] bg-white px-3 outline-none focus:border-[#39775a]">{field.options?.map((option) => <option key={option} value={option}>{displayValue(field.key, option)}</option>)}</select> : <input type={field.type ?? "text"} required={field.required} min={field.type === "number" ? 0 : undefined} step={field.type === "number" ? "any" : undefined} value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} className="mt-1.5 block h-10 w-full rounded border border-[#d7e0d8] px-3 outline-none focus:border-[#39775a]" />}</>}
+            {field.type === "checkbox" ? <><input type="checkbox" checked={Boolean(values[field.key])} onChange={(event) => setValues({ ...values, [field.key]: event.target.checked })} className="h-4 w-4 accent-[#286344]" />{field.label}</> : <>{field.label}{field.type === "textarea" ? <textarea required={field.required} value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} rows={3} className="mt-1.5 block w-full rounded border border-[#d7e0d8] px-3 py-2 outline-none focus:border-[#39775a]" /> : field.type === "select" ? <select value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} className="mt-1.5 block h-10 w-full rounded border border-[#d7e0d8] bg-white px-3 outline-none focus:border-[#39775a]">{field.options?.map((option) => <option key={option} value={option}>{displayValue(field.key, option)}</option>)}</select> : <input type={field.type ?? "text"} required={field.required} min={field.min ?? (field.type === "number" ? 0 : undefined)} max={field.max} step={field.step ?? (field.type === "number" ? "any" : undefined)} minLength={field.minLength} maxLength={field.maxLength} value={String(values[field.key] ?? "")} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} className="mt-1.5 block h-10 w-full rounded border border-[#d7e0d8] px-3 outline-none focus:border-[#39775a]" />}</>}
           </label>)}
           {error && <p className="text-sm text-[#a3432a]" role="alert">{error}</p>}
-          <div className="flex justify-end gap-2 border-t border-[#edf1ed] pt-4"><button type="button" onClick={() => { setCreating(false); setEditing(null); }} className="h-10 rounded border border-[#d7e0d8] px-4 text-sm font-medium">Hủy</button><button disabled={saving} className="h-10 rounded bg-[#1b533d] px-4 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Đang lưu..." : "Lưu thay đổi"}</button></div>
+          <div className="flex justify-end gap-2 border-t border-[#edf1ed] pt-4"><button type="button" onClick={() => { setCreating(false); setEditing(null); }} className="h-10 rounded border border-[#d7e0d8] px-4 text-sm font-medium">Hủy</button><button disabled={saving} className="h-10 rounded bg-[#1b533d] px-4 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Đang lưu..." : creating ? "Tạo mới" : "Lưu thay đổi"}</button></div>
         </form>
       </section>
     </div>}

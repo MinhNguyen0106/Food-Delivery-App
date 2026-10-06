@@ -411,13 +411,12 @@ export default function LoginScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* TÀI KHOẢN TEST */}
+      {/* THÔNG TIN TÀI KHOẢN */}
       <View style={styles.hintBox}>
-        <Text style={styles.hintTitle}>Tài khoản thử nghiệm (CSDL):</Text>
-
-        <Text style={styles.hintText}>Email: shipper1@example.com</Text>
-
-        <Text style={styles.hintText}>Mật khẩu: HASH_SHIPPER_1</Text>
+        <Text style={styles.hintTitle}>Tài khoản Shipper</Text>
+        <Text style={styles.hintText}>
+          Sử dụng email và mật khẩu được cấp cho tài khoản Shipper.
+        </Text>
       </View>
     </View>
   );
