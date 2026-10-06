@@ -1,14 +1,25 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { FoodRow, QuantityControl } from '@/components/commerce';
+import { ListPagination } from '@/components/ListPagination';
 import { AppButton, BottomAction, Divider, Page, ScreenHeader, Surface, showConfirmation } from '@/components/ui';
 import { formatCurrency } from '@/data/demo';
 import { usePrototype } from '@/providers/PrototypeProvider';
 import { colors } from '@/theme';
 
+const CART_ITEMS_PER_PAGE = 8;
+
 export default function CartScreen() {
   const { cart, cartSubtotal, updateCartQuantity, removeFromCart, clearCart, isLoading } = usePrototype();
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(cart.length / CART_ITEMS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleCart = cart.slice(
+    (currentPage - 1) * CART_ITEMS_PER_PAGE,
+    currentPage * CART_ITEMS_PER_PAGE,
+  );
 
   if (cart.length === 0 && isLoading) {
     return (
@@ -60,7 +71,7 @@ export default function CartScreen() {
           </Surface>
         ) : null}
         <View style={styles.itemList}>
-          {cart.map(({ food, quantity }) => (
+          {visibleCart.map(({ food, quantity }) => (
             <View key={food.id} style={styles.cartRow}>
               <FoodRow food={food} onPress={() => router.push({ pathname: '/foods/[foodId]', params: { foodId: String(food.id) } })} />
               <View style={styles.cartRowBottom}>
@@ -76,6 +87,12 @@ export default function CartScreen() {
             </View>
           ))}
         </View>
+        <ListPagination
+          page={currentPage}
+          pageSize={CART_ITEMS_PER_PAGE}
+          total={cart.length}
+          onPageChange={setPage}
+        />
         <Surface style={styles.summary}>
           <Text style={styles.summaryTitle}>Tạm tính</Text>
           <View style={styles.summaryRow}>

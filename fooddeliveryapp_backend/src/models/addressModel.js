@@ -11,6 +11,14 @@ module.exports = {
     return rows;
   },
 
+  async countForCustomer(customerId, connection = db) {
+    const [rows] = await connection.execute(
+      'SELECT COUNT(*) AS address_count FROM addresses WHERE customer_id = ?',
+      [customerId]
+    );
+    return Number(rows[0]?.address_count ?? 0);
+  },
+
   async getForCustomer(addressId, customerId, connection = db) {
     const [rows] = await connection.execute(
       `SELECT address_id, customer_id, address_name, receiver_name, receiver_phone,

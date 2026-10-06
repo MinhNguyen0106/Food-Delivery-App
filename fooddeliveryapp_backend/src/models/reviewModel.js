@@ -22,7 +22,7 @@ module.exports = {
       `INSERT INTO reviews (customer_id, order_id, rating, comment, status_id)
        SELECT ?, ?, ?, ?, status_id
        FROM review_statuses
-       WHERE status_name = 'PENDING'`,
+       WHERE status_name = 'VISIBLE'`,
       [review.customerId, review.orderId, review.rating, review.comment]
     );
     return result.insertId;
@@ -67,7 +67,9 @@ module.exports = {
     if (statusName) params.push(statusName);
     const [rows] = await db.execute(
       `SELECT review.review_id, review.customer_id, review.order_id,
-        review.rating, review.comment, status.status_name AS status,
+        review.rating, review.comment,
+        CASE WHEN status.status_name = 'PENDING' THEN 'VISIBLE'
+          ELSE status.status_name END AS status,
         review.created_at, review.updated_at,
         order_record.restaurant_id, restaurant.name AS restaurant_name
        FROM reviews review
@@ -89,7 +91,22 @@ module.exports = {
        JOIN review_statuses status ON status.status_id = review.status_id
        JOIN orders order_record ON order_record.order_id = review.order_id
        JOIN restaurants restaurant ON restaurant.restaurant_id = order_record.restaurant_id
-       WHERE order_record.restaurant_id = ? AND status.status_name = 'VISIBLE'
+       WHERE order_record.restaurant_id = ?
+         AND status.status_name IN ('VISIBLE', 'PENDING')
+       ORDER BY review.created_at DESC, review.review_id DESC`,
+      [restaurantId]
+    );
+    return rows;
+  },
+
+  async listPublicRestaurant(restaurantId) {
+    const [rows] = await db.execute(
+      `SELECT review.review_id, review.rating, review.comment, review.created_at
+       FROM reviews review
+       JOIN review_statuses status ON status.status_id = review.status_id
+       JOIN orders order_record ON order_record.order_id = review.order_id
+       WHERE order_record.restaurant_id = ?
+         AND status.status_name IN ('VISIBLE', 'PENDING')
        ORDER BY review.created_at DESC, review.review_id DESC`,
       [restaurantId]
     );

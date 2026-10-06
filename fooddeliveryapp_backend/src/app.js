@@ -11,11 +11,11 @@ const cors = require("cors");
 const allowedOrigins = new Set(
   (
     process.env.CORS_ORIGINS ||
-    "http://localhost:8081,http://localhost:8091,http://localhost:8092"
+    "http://localhost:8081,http://localhost:8091,http://localhost:8092,http://localhost:8082"
   )
     .split(",")
     .map((origin) => origin.trim())
-    .filter(Boolean)
+    .filter(Boolean),
 );
 
 app.use(

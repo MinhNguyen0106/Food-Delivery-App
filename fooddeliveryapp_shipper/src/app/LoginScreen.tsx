@@ -252,6 +252,8 @@ import {
   View,
 } from "react-native";
 
+const LOGIN_FAILURE_MESSAGE = "Tài khoản hoặc mật khẩu không đúng.";
+
 export default function LoginScreen() {
   const router = useRouter();
 
@@ -307,9 +309,12 @@ export default function LoginScreen() {
         }
 
         if (user?.role !== "SHIPPER" || !shipperData?.shipperId) {
-          throw new Error(
-            "Tài khoản không phải Shipper hoặc thiếu thông tin Shipper.",
-          );
+          if (Platform.OS === "web") {
+            window.alert(LOGIN_FAILURE_MESSAGE);
+          } else {
+            Alert.alert("Đăng nhập thất bại", LOGIN_FAILURE_MESSAGE);
+          }
+          return;
         }
 
         await AsyncStorage.setItem("token", token);
@@ -318,8 +323,17 @@ export default function LoginScreen() {
 
         router.replace("/home");
       } else {
-        const errorMsg = result.message || "Đăng nhập thất bại.";
-        // Hiển thị errorMsg như phần code hiện tại
+        const message =
+          response.status === 401 ||
+          response.status === 403 ||
+          result.error === "INVALID_CREDENTIALS"
+            ? LOGIN_FAILURE_MESSAGE
+            : result.message || "Đăng nhập thất bại.";
+        if (Platform.OS === "web") {
+          window.alert(message);
+        } else {
+          Alert.alert("Đăng nhập thất bại", message);
+        }
       }
     } catch (error) {
       console.error("Lỗi đăng nhập:", error);

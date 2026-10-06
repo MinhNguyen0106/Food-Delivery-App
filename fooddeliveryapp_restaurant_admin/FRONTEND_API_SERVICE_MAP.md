@@ -234,7 +234,7 @@ validate, or apply-voucher endpoint.
 
 |---|---|---|---|---|
 
-| `createReview({order_id,rating,comment?})` | `POST /api/reviews` | completed owned order, rating 1–5, optional comment | reviewId/orderId/PENDING status | Customer |
+| `createReview({order_id,rating,comment?})` | `POST /api/reviews` | completed owned order, rating 1–5, optional comment | reviewId/orderId/VISIBLE status; displayed immediately | Customer |
 
 | `getMyReviews()` | `GET /api/reviews/mine` | None | own review list | Customer |
 
@@ -258,7 +258,11 @@ Restaurant-facing calls share `restaurantService`, `categoryService`,
 
 | `getMyProfile()` | `GET /api/auth/me` | None | Restaurant |
 
-| `updateMyEmail(email)` | `PATCH /api/auth/me` | `{email}` | Restaurant; no Restaurant business-profile update API |
+| `restaurantInfoService.getMyProfile()` | `GET /api/restaurants/me` | None | Authenticated Restaurant; own business profile |
+
+| `restaurantInfoService.updateMyProfile(profile)` | `PATCH /api/restaurants/me` | Non-empty subset of name, address, phone, description, coordinates and opening/closing times | Authenticated Restaurant; own profile only |
+
+| `updateMyEmail(email)` | `PATCH /api/auth/me` | `{email}` | Restaurant account |
 
 | `getMyFoods(filters)` | `GET /api/foods` | optional food filters | only own Restaurant's foods |
 
@@ -270,7 +274,7 @@ Restaurant-facing calls share `restaurantService`, `categoryService`,
 
 | `markOrderReady(id,note?)` | `POST /api/orders/{id}/ready-for-pickup` | optional note | Own PREPARING order |
 
-| `getRestaurantReviews()` | `GET /api/reviews/restaurant/mine` | None | VISIBLE reviews of own orders |
+| `getRestaurantReviews()` | `GET /api/reviews/restaurant/mine` | None | VISIBLE reviews of own orders (legacy PENDING reviews are also treated as visible) |
 
 | `getRestaurantRevenue(filters)` | `GET /api/reports/restaurant/revenue` | optional from/to/groupBy day/week/month | authenticated Restaurant only |
 
@@ -434,6 +438,8 @@ backend host. Static image fetching itself needs no bearer token.
 
 | Customer | Review form/history | reviewService | `createReview()`, `getMyReviews()` | `POST /api/reviews`, `GET /api/reviews/mine` |
 
+| Customer | Restaurant page reviews | reviewService | list public reviews | `GET /api/reviews/restaurant/{restaurantId}` |
+
 | Customer/Restaurant/Shipper | Delivery tracking status | deliveryService | `trackOrder()` | `GET /api/deliveries/orders/{orderId}` |
 
 | Restaurant | Menu management | foodService, imageService | create/update/delete Food; upload/delete Food image | `/api/foods`, `/api/foods/{id}`, `/api/foods/{id}/image` |
@@ -443,6 +449,10 @@ backend host. Static image fetching itself needs no bearer token.
 | Restaurant | Review dashboard | reviewService | list own visible reviews | `GET /api/reviews/restaurant/mine` |
 
 | Restaurant | Revenue | reportService | `getRestaurantRevenue()` | `GET /api/reports/restaurant/revenue` |
+
+| Restaurant | Business profile | restaurantInfoService | `getMyProfile()`, `updateMyProfile()` | `GET/PATCH /api/restaurants/me` |
+
+| Restaurant | Login credentials | authService | `updateRestaurantEmail()`, `changePassword()` | `PATCH /api/auth/me`, `POST /api/auth/change-password` |
 
 | Restaurant/Admin | Restaurant image settings | imageService | upload/delete image | `/api/restaurants/{id}/image` |
 
@@ -464,11 +474,9 @@ backend host. Static image fetching itself needs no bearer token.
 
 | Admin | Category management | categoryService | create/update/delete | `/api/categories` |
 
-No matching backend API is implemented for restaurant registration UI, editing
-
-Restaurant business profile fields, Customer review edit/delete, Admin Food
-
-CRUD, payment gateway selection, or realtime map/GPS tracking. Such screens
+No matching backend API is implemented for restaurant registration UI,
+Customer review edit/delete, Admin Food CRUD, payment gateway selection, or
+realtime map/GPS tracking. Such screens
 
 would be frontend-only until a backend endpoint exists; do not call a guessed
 

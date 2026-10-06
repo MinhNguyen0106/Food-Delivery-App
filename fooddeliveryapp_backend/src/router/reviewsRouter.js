@@ -9,6 +9,12 @@ router.use(authenticate);
 router.get('/mine', authorizeRoles('CUSTOMER'), controller.mine);
 router.get('/restaurant/mine', authorizeRoles('RESTAURANT'), controller.restaurantList);
 router.get(
+  '/restaurant/:restaurantId',
+  authorizeRoles('CUSTOMER'),
+  validation.reviewRestaurantId,
+  controller.publicRestaurantList
+);
+router.get(
   '/',
   authorizeRoles('ADMIN'),
   validation.adminFilter,

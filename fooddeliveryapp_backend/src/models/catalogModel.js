@@ -12,7 +12,7 @@ const restaurantRatingSql = `(
   FROM reviews review
   JOIN review_statuses review_status ON review_status.status_id = review.status_id
   JOIN orders o ON o.order_id = review.order_id
-  WHERE review_status.status_name = 'VISIBLE'
+  WHERE review_status.status_name IN ('VISIBLE', 'PENDING')
   GROUP BY o.restaurant_id
 ) restaurant_rating`;
 
@@ -81,7 +81,8 @@ module.exports = {
         ${selectDistance}
        FROM restaurants r
        JOIN restaurant_statuses restaurant_status ON restaurant_status.status_id = r.status_id
-       LEFT JOIN ${restaurantRatingSql} ON TRUE
+       LEFT JOIN ${restaurantRatingSql}
+         ON restaurant_rating.restaurant_id = r.restaurant_id
        ${where}
        ORDER BY r.name`,
       params
@@ -106,12 +107,43 @@ module.exports = {
         COALESCE(restaurant_rating.rating_average, 0) AS rating_average
        FROM restaurants r
        JOIN restaurant_statuses restaurant_status ON restaurant_status.status_id = r.status_id
-       LEFT JOIN ${restaurantRatingSql} ON TRUE
+       LEFT JOIN ${restaurantRatingSql}
+         ON restaurant_rating.restaurant_id = r.restaurant_id
        WHERE ${parts.join(' AND ')}
        LIMIT 1`,
       params
     );
     return rows[0] || null;
+  },
+
+  async updateRestaurantProfile(id, userId, data) {
+    const allowed = [
+      'name',
+      'address',
+      'phone',
+      'description',
+      'latitude',
+      'longitude',
+      'opening_time',
+      'closing_time',
+    ];
+    const fields = allowed.filter((field) => data[field] !== undefined);
+    const values = fields.map((field) => {
+      if (field === 'name' || field === 'address' || field === 'phone') {
+        return data[field].trim();
+      }
+      if (field === 'description') return data[field]?.trim() || null;
+      return data[field];
+    });
+    if (fields.length === 0) return 0;
+
+    const [result] = await db.execute(
+      `UPDATE restaurants
+       SET ${fields.map((field) => `\`${field}\` = ?`).join(', ')}
+       WHERE restaurant_id = ? AND user_id = ?`,
+      [...values, id, userId]
+    );
+    return result.affectedRows;
   },
 
   async listRestaurantCategories(restaurantId) {

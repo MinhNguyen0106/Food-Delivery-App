@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { authService } from "@/services/auth.service";
+import { authService, LOGIN_FAILURE_MESSAGE } from "@/services/auth.service";
 
 type AccountType = "admin" | "restaurant";
 
@@ -64,9 +64,7 @@ export default function Home() {
       if (result.user.role !== expectedRole) {
         window.localStorage.removeItem("accessToken");
         window.localStorage.removeItem("token");
-        setMessage(accountType === "admin"
-          ? "Tài khoản này không có quyền quản trị Admin."
-          : "Tài khoản này không thuộc nhà hàng.");
+        setMessage(LOGIN_FAILURE_MESSAGE);
         return;
       }
       router.replace(accountType === "admin" ? "/admin/dashboard" : "/restaurant/dashboard");

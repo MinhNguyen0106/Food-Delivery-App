@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { router } from 'expo-router';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { RestaurantCard } from '@/components/commerce';
+import { ListPagination } from '@/components/ListPagination';
 import { Page, RequestState, SearchField, SectionHeading, Surface } from '@/components/ui';
 import { useApiResource } from '@/hooks/useApiResource';
 import { listCategories, listRestaurants } from '@/services/api/catalog';
@@ -10,7 +11,10 @@ import { usePrototype } from '@/providers/PrototypeProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { colors } from '@/theme';
 
+const RESTAURANTS_PER_PAGE = 6;
+
 export default function HomeScreen() {
+  const [restaurantPageState, setRestaurantPageState] = useState({ addressId: '', page: 1 });
   const { token } = useSession();
   const {
     addresses,
@@ -34,6 +38,17 @@ export default function HomeScreen() {
     return { categories, restaurants };
   }, [selectedAddress, token]);
   const { data, error, isLoading, retry } = useApiResource(loadHome);
+  const addressId = selectedAddressId ?? '';
+  const restaurantCount = data?.restaurants.length ?? 0;
+  const restaurantPageCount = Math.max(1, Math.ceil(restaurantCount / RESTAURANTS_PER_PAGE));
+  const restaurantPage = Math.min(
+    restaurantPageState.addressId === addressId ? restaurantPageState.page : 1,
+    restaurantPageCount,
+  );
+  const visibleRestaurants = data?.restaurants.slice(
+    (restaurantPage - 1) * RESTAURANTS_PER_PAGE,
+    restaurantPage * RESTAURANTS_PER_PAGE,
+  ) ?? [];
 
   return (
     <Page contentStyle={styles.content}>
@@ -129,9 +144,17 @@ export default function HomeScreen() {
         ) : error ? (
           <RequestState message={error} onRetry={retry} />
         ) : data?.restaurants.length ? (
-          data.restaurants.map((restaurant) => (
-            <RestaurantCard restaurant={restaurant} key={restaurant.id} />
-          ))
+          <>
+            {visibleRestaurants.map((restaurant) => (
+              <RestaurantCard restaurant={restaurant} key={restaurant.id} />
+            ))}
+            <ListPagination
+              page={restaurantPage}
+              pageSize={RESTAURANTS_PER_PAGE}
+              total={restaurantCount}
+              onPageChange={(page) => setRestaurantPageState({ addressId, page })}
+            />
+          </>
         ) : (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Chưa có nhà hàng đang mở</Text>

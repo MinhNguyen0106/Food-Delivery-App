@@ -2,6 +2,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
+import { ListPagination } from '@/components/ListPagination';
 import { AppButton, Divider, Page, RequestState, ScreenHeader, StatusPill, Surface, showConfirmation } from '@/components/ui';
 import { formatCurrency, getOrderStatusLabel, type DemoOrder } from '@/data/demo';
 import { goBackOrReplace } from '@/navigation/back';
@@ -18,6 +19,8 @@ const steps = [
   { status: 'COMPLETED', title: 'Đã hoàn thành', detail: 'Đơn hàng đã được giao thành công.' },
 ];
 
+const ORDER_ITEMS_PER_PAGE = 8;
+
 export default function OrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const { orders, cancelOrder, refreshOrder, isLoading } = usePrototype();
@@ -25,6 +28,7 @@ export default function OrderDetailScreen() {
   const [isLoadingDetail, setIsLoadingDetail] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefreshFailed, setAutoRefreshFailed] = useState(false);
+  const [itemsPageState, setItemsPageState] = useState({ orderId: '', page: 1 });
   const requestedOrderId = useRef('');
   useEffect(() => {
     if (!orderId || requestedOrderId.current === orderId) return;
@@ -36,6 +40,15 @@ export default function OrderDetailScreen() {
   const completedIndex = order ? steps.findIndex((step) => step.status === order.status) : -1;
   const isTerminal = order?.status === 'CANCELLED' || order?.status === 'REJECTED';
   const isActivelyTracked = Boolean(order && !isTerminal && !isCompleted);
+  const itemPageCount = Math.max(1, Math.ceil((order?.items.length ?? 0) / ORDER_ITEMS_PER_PAGE));
+  const currentItemsPage = Math.min(
+    itemsPageState.orderId === orderId ? itemsPageState.page : 1,
+    itemPageCount,
+  );
+  const visibleItems = order?.items.slice(
+    (currentItemsPage - 1) * ORDER_ITEMS_PER_PAGE,
+    currentItemsPage * ORDER_ITEMS_PER_PAGE,
+  ) ?? [];
 
   useFocusEffect(useCallback(() => {
     if (!orderId || !isActivelyTracked) return undefined;
@@ -178,7 +191,7 @@ export default function OrderDetailScreen() {
         <Divider />
         {order.items.length === 0 ? (
           <Text style={styles.subText}>Đơn hàng không có chi tiết món ăn trong dữ liệu máy chủ.</Text>
-        ) : order.items.map((item) => {
+        ) : visibleItems.map((item) => {
           return (
             <View key={item.foodId} style={styles.foodRow}>
               <Text style={styles.foodName}>{item.name ?? `Món #${item.foodId}`} × {item.quantity}</Text>
@@ -186,6 +199,12 @@ export default function OrderDetailScreen() {
             </View>
           );
         })}
+        <ListPagination
+          page={currentItemsPage}
+          pageSize={ORDER_ITEMS_PER_PAGE}
+          total={order.items.length}
+          onPageChange={(page) => setItemsPageState({ orderId: orderId ?? '', page })}
+        />
       </Surface>
 
       <Surface style={styles.sectionCard}>

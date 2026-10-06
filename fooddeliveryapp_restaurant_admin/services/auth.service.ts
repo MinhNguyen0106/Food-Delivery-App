@@ -1,5 +1,11 @@
-import apiClient, { assertSuccess, unwrapResponse } from "@/services/api.client";
+import apiClient, {
+  ApiClientError,
+  assertSuccess,
+  unwrapResponse,
+} from "@/services/api.client";
 import type { ActorProfile } from "@/types/service-api";
+
+export const LOGIN_FAILURE_MESSAGE = "Tài khoản hoặc mật khẩu không đúng.";
 
 export interface LoginResult {
   token: string;
@@ -34,9 +40,20 @@ export interface RegisterCustomerResult {
 
 export const authService = {
   async login(email: string, password: string): Promise<LoginResult> {
-    const result = unwrapResponse(
-      await apiClient.post<LoginResult>("/auth/login", { email, password }),
-    );
+    let result: LoginResult;
+    try {
+      result = unwrapResponse(
+        await apiClient.post<LoginResult>("/auth/login", { email, password }),
+      );
+    } catch (error) {
+      if (
+        error instanceof ApiClientError &&
+        (error.status === 401 || error.status === 403)
+      ) {
+        throw new Error(LOGIN_FAILURE_MESSAGE);
+      }
+      throw error;
+    }
     if (typeof window !== "undefined") {
       window.localStorage.setItem("accessToken", result.token);
       window.localStorage.removeItem("token");

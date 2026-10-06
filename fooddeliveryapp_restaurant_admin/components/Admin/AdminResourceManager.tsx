@@ -48,7 +48,7 @@ const configurations: Record<AdminResource, { title: string; description: string
     limitation: "Backend hiện chỉ cung cấp API theo dõi và xem chi tiết đơn hàng cho Admin; chưa có API tạo đơn, đổi trạng thái hoặc hủy đơn.",
   },
   reviews: {
-    title: "Đánh giá", description: "Kiểm duyệt nội dung đánh giá của khách hàng.",
+    title: "Đánh giá", description: "Ẩn đánh giá vi phạm quy định cộng đồng hoặc hiện lại đánh giá đã ẩn.",
     columns: [{ key: "review_id", label: "Mã" }, { key: "customer_name", label: "Khách hàng" }, { key: "restaurant_name", label: "Nhà hàng" }, { key: "rating", label: "Điểm" }, { key: "comment", label: "Nội dung" }, { key: "status", label: "Hiển thị" }],
     limitation: "Backend hiện chỉ cung cấp xem và ẩn/hiện đánh giá; chưa có API cho Admin tạo/sửa hoặc liên kết review với món ăn.",
   },

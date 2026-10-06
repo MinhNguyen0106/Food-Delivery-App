@@ -1,6 +1,7 @@
 const AppError = require('./AppError');
 const model = require('../models/addressModel');
 const db = require('../common/db').promise();
+const MAX_CUSTOMER_ADDRESSES = 3;
 
 function requireCustomer(actor) {
   if (!actor.customerId) {
@@ -56,6 +57,13 @@ module.exports = {
     const customerId = requireCustomer(actor);
     const id = await transaction(async (connection) => {
       await lockCustomer(connection, customerId);
+      if (await model.countForCustomer(customerId, connection) >= MAX_CUSTOMER_ADDRESSES) {
+        throw new AppError(
+          `A customer can save up to ${MAX_CUSTOMER_ADDRESSES} addresses`,
+          409,
+          'ADDRESS_LIMIT_REACHED'
+        );
+      }
       if (data.is_default) {
         await connection.execute(
           'UPDATE addresses SET is_default = FALSE WHERE customer_id = ? AND is_default = TRUE',

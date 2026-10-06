@@ -7,6 +7,13 @@ export interface Category {
   description: string;
 }
 
+export interface RestaurantReview {
+  id: number;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
 function requireArray(value: unknown, entity: string): unknown[] {
   if (!Array.isArray(value)) {
     throw new Error(`Máy chủ trả về danh sách ${entity} không đúng cấu trúc.`);
@@ -65,6 +72,23 @@ function mapCategory(value: unknown): Category {
       category.description === null || category.description === undefined
         ? ''
         : requireString(category.description, 'category.description'),
+  };
+}
+
+function mapRestaurantReview(value: unknown): RestaurantReview {
+  const review = requireObject(value, 'đánh giá nhà hàng');
+  const rating = requireNumber(review.rating, 'review.rating');
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new Error('Máy chủ trả về điểm đánh giá không hợp lệ.');
+  }
+  return {
+    id: requireId(review.review_id, 'review_id'),
+    rating,
+    comment:
+      review.comment === null || review.comment === undefined
+        ? null
+        : requireString(review.comment, 'review.comment'),
+    createdAt: requireString(review.created_at, 'review.created_at'),
   };
 }
 
@@ -201,6 +225,17 @@ export async function listRestaurants(
 export async function getRestaurant(token: string, restaurantId: number): Promise<Restaurant> {
   const data = await apiRequest<unknown>(`/restaurants/${restaurantId}`, { token });
   return mapRestaurant(data);
+}
+
+export async function listRestaurantReviews(
+  token: string,
+  restaurantId: number,
+): Promise<RestaurantReview[]> {
+  const data = await apiRequest<unknown>(
+    `/reviews/restaurant/${restaurantId}`,
+    { token },
+  );
+  return requireArray(data, 'đánh giá nhà hàng').map(mapRestaurantReview);
 }
 
 export async function listRestaurantCategories(

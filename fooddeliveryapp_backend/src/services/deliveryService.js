@@ -150,8 +150,8 @@ module.exports = {
   async listAvailable(actor) {
     const shipperId = requireShipper(actor);
     const shipper = await requireShipperRow(model.pool, shipperId);
-    if (shipper.status !== 'ONLINE') {
-      throw new AppError('Shipper must be ONLINE to view available deliveries', 409, 'SHIPPER_NOT_ONLINE');
+    if (!['ONLINE', 'BUSY'].includes(shipper.status)) {
+      throw new AppError('Shipper must be ONLINE or BUSY to view available deliveries', 409, 'SHIPPER_NOT_ONLINE');
     }
     return model.listAvailableDeliveries(model.pool);
   },
@@ -179,11 +179,8 @@ module.exports = {
     const deliveryId = positiveId(deliveryIdValue, 'delivery_id');
     return transaction(async (connection) => {
       const shipper = await requireShipperRow(connection, shipperId, true);
-      if (shipper.status !== 'ONLINE') {
-        throw new AppError('Only an ONLINE Shipper can accept a delivery', 409, 'SHIPPER_NOT_ONLINE');
-      }
-      if (await model.hasActiveDelivery(connection, shipperId)) {
-        throw new AppError('Shipper already has an active delivery', 409, 'SHIPPER_BUSY');
+      if (!['ONLINE', 'BUSY'].includes(shipper.status)) {
+        throw new AppError('Only an ONLINE or BUSY Shipper can accept a delivery', 409, 'SHIPPER_NOT_ONLINE');
       }
       const delivery = await model.lockDelivery(connection, deliveryId);
       if (!delivery || delivery.status !== 'REQUESTED' || delivery.shipper_id !== null) {
@@ -278,14 +275,17 @@ module.exports = {
             throw new AppError('COD payment could not be confirmed', 409, 'COD_PAYMENT_INVALID');
           }
         }
-        const onlineId = await model.getLookupId(
-          connection, 'shipper_statuses', 'status_name', 'ONLINE'
-        );
-        if (!onlineId) {
-          throw new AppError('COD payment could not be confirmed', 409, 'COD_PAYMENT_INVALID');
+        const stillHasActiveDelivery = await model.hasActiveDelivery(connection, shipperId);
+        if (!stillHasActiveDelivery) {
+          const onlineId = await model.getLookupId(
+            connection, 'shipper_statuses', 'status_name', 'ONLINE'
+          );
+          if (!onlineId) {
+            throw new AppError('Shipper availability configuration is missing', 500, 'CONFIGURATION_ERROR');
+          }
+          await model.updateShipperStatus(connection, shipperId, onlineId);
         }
-        await model.updateShipperStatus(connection, shipperId, onlineId);
-        result.shipperStatus = 'ONLINE';
+        result.shipperStatus = stillHasActiveDelivery ? 'BUSY' : 'ONLINE';
         result.payment = { method: 'COD', status: 'PAID', amount: String(order.total_amount) };
       }
       return result;

@@ -197,6 +197,26 @@ module.exports = {
     return restaurant;
   },
 
+  async getMyRestaurant(actor) {
+    if (actor?.role !== 'RESTAURANT' ||
+      !Number.isSafeInteger(Number(actor.restaurantId)) ||
+      Number(actor.restaurantId) < 1) {
+      throw new AppError('Restaurant account is not available', 403, 'FORBIDDEN');
+    }
+    return this.getRestaurant(actor.restaurantId, actor);
+  },
+
+  async updateMyRestaurant(actor, data) {
+    if (actor?.role !== 'RESTAURANT' ||
+      !Number.isSafeInteger(Number(actor.restaurantId)) ||
+      Number(actor.restaurantId) < 1) {
+      throw new AppError('Restaurant account is not available', 403, 'FORBIDDEN');
+    }
+    const current = await this.getRestaurant(actor.restaurantId, actor);
+    await model.updateRestaurantProfile(actor.restaurantId, actor.userId, data);
+    return this.getRestaurant(current.restaurant_id, actor);
+  },
+
   async listRestaurantCategories(id, actor) {
     if (!(await model.restaurantIsVisible(id, actor))) {
       throw new AppError('Restaurant not found', 404, 'NOT_FOUND');

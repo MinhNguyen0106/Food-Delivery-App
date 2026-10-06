@@ -25,7 +25,7 @@ export async function login(email: string, password: string): Promise<LoginRespo
   }
 
   if (data.user.role !== 'CUSTOMER') {
-    throw new Error('Tài khoản này không có quyền truy cập ứng dụng khách hàng.');
+    throw new Error('Tài khoản hoặc mật khẩu không đúng.');
   }
 
   return data;

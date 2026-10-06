@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OrderCard } from '@/components/commerce';
+import { ListPagination } from '@/components/ListPagination';
 import { Chip, Page, ScreenHeader } from '@/components/ui';
 import { getOrderStatusLabel, type DemoOrderStatus } from '@/data/demo';
 import { usePrototype } from '@/providers/PrototypeProvider';
@@ -19,10 +20,13 @@ const statuses: DemoOrderStatus[] = [
   'REJECTED',
 ];
 
+const ORDERS_PER_PAGE = 6;
+
 export default function OrdersScreen() {
   const { orders, isLoading, refreshOrders } = usePrototype();
   const [filter, setFilter] = useState<'Tất cả' | DemoOrderStatus>('Tất cả');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pageState, setPageState] = useState({ filter: 'Tất cả' as 'Tất cả' | DemoOrderStatus, page: 1 });
   const [loadedFilter, setLoadedFilter] = useState<'Tất cả' | DemoOrderStatus | null>(null);
   useEffect(() => {
     let active = true;
@@ -39,6 +43,12 @@ export default function OrdersScreen() {
       return filter === 'Tất cả' || order.status === filter;
     }),
     [filter, orders],
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredOrders.length / ORDERS_PER_PAGE));
+  const page = Math.min(pageState.filter === filter ? pageState.page : 1, pageCount);
+  const visibleOrders = filteredOrders.slice(
+    (page - 1) * ORDERS_PER_PAGE,
+    page * ORDERS_PER_PAGE,
   );
 
   async function refresh() {
@@ -76,7 +86,10 @@ export default function OrdersScreen() {
             key={item}
             label={item === 'Tất cả' ? item : getOrderStatusLabel(item)}
             selected={filter === item}
-            onPress={() => setFilter(item)}
+            onPress={() => {
+              setFilter(item);
+              setPageState({ filter: item, page: 1 });
+            }}
           />
         ))}
       </ScrollView>
@@ -86,7 +99,15 @@ export default function OrdersScreen() {
       {isLoadingFilter && !filteredOrders.length ? (
         <Text style={styles.emptyCopy}>Đang tải đơn hàng...</Text>
       ) : filteredOrders.length ? (
-        filteredOrders.map((order) => <OrderCard key={order.id} order={order} />)
+        <>
+          {visibleOrders.map((order) => <OrderCard key={order.id} order={order} />)}
+          <ListPagination
+            page={page}
+            pageSize={ORDERS_PER_PAGE}
+            total={filteredOrders.length}
+            onPageChange={(nextPage) => setPageState({ filter, page: nextPage })}
+          />
+        </>
       ) : !isLoading ? (
         <View style={styles.empty}>
           <Text style={styles.emptyMark}>▤</Text>

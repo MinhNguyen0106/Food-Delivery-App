@@ -301,6 +301,19 @@ test('isolated MySQL API integration workflows', {
       },
     });
     assert.equal(created.status, 201);
+    const overLimit = await api('POST', '/api/addresses', {
+      token: customer,
+      body: {
+        address_name: 'Integration fourth',
+        receiver_name: 'Integration Customer',
+        receiver_phone: '0981234567',
+        full_address: 'This address should not be created',
+        latitude: 21,
+        longitude: 105,
+      },
+    });
+    assert.equal(overLimit.status, 409);
+    assert.equal(overLimit.body.error, 'ADDRESS_LIMIT_REACHED');
     const addressId = created.body.data.address_id;
     assert.equal((await api('GET', `/api/addresses/${addressId}`, { token: customer })).status, 200);
     assert.equal(
@@ -623,6 +636,10 @@ test('isolated MySQL API integration workflows', {
     });
     assert.equal(review.status, 201);
     const reviewId = review.body.data.reviewId;
+    assert.equal(review.body.data.status, 'VISIBLE');
+    const restaurantList = await api('GET', '/api/restaurants', { token: customer });
+    const restaurantIds = restaurantList.body.data.map((row) => row.restaurant_id);
+    assert.equal(new Set(restaurantIds).size, restaurantIds.length);
     assert.equal(
       (await api('POST', '/api/reviews', {
         token: customer,
@@ -631,13 +648,36 @@ test('isolated MySQL API integration workflows', {
       409
     );
     assert.equal((await api('GET', '/api/reviews/restaurant/mine', { token: restaurant })).body.data
-      .some((row) => Number(row.review_id) === reviewId), false);
+      .some((row) => Number(row.review_id) === reviewId), true);
+    const customerReviews = await api(
+      'GET',
+      '/api/reviews/restaurant/1',
+      { token: customer }
+    );
+    const publicReview = customerReviews.body.data.find(
+      (row) => Number(row.review_id) === reviewId
+    );
+    assert.ok(publicReview);
+    assert.equal(Object.hasOwn(publicReview, 'customer_id'), false);
     assert.equal(
       (await api('PATCH', `/api/reviews/${reviewId}/status`, {
         token: customer,
         body: { status: 'VISIBLE' },
       })).status,
       403
+    );
+    assert.equal(
+      (await api('PATCH', `/api/reviews/${reviewId}/status`, {
+        token: admin,
+        body: { status: 'HIDDEN' },
+      })).status,
+      200
+    );
+    assert.equal(
+      (await api('GET', '/api/reviews/restaurant/1', {
+        token: customer,
+      })).body.data.some((row) => Number(row.review_id) === reviewId),
+      false
     );
     assert.equal(
       (await api('PATCH', `/api/reviews/${reviewId}/status`, {

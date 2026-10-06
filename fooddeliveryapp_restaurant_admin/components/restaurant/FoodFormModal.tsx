@@ -20,7 +20,6 @@ export function FoodFormModal({
     description: food?.description ?? "",
     price: food?.price ?? 0,
     categoryId: food?.categoryId ?? categories[0]?.categoryId ?? 0,
-    image: food?.image ?? "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -43,7 +42,6 @@ export function FoodFormModal({
             <option value={0}>Chọn danh mục</option>
             {categories.map((category) => <option key={category.categoryId} value={category.categoryId}>{category.name}</option>)}
           </select>
-          <input value={form.image ?? ""} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="URL hình ảnh (không bắt buộc)" className="w-full rounded-lg border px-3 py-2 text-sm" />
         </div>
         <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border px-4 py-2 text-sm">Hủy</button><button disabled={saving} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Đang lưu..." : "Lưu món"}</button></div>
       </form>

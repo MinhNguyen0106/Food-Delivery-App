@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { orderService } from "@/services/order.service";
 import type { Order, OrderStatus } from "@/types/order";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
@@ -27,7 +28,29 @@ export function OrderCard({
 }) {
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
+  const [details, setDetails] = useState<Order | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
   const next = nextStatus[order.status];
+
+  async function toggleDetails() {
+    if (showDetails) {
+      setShowDetails(false);
+      return;
+    }
+    setShowDetails(true);
+    if (details) return;
+    setLoadingDetails(true);
+    setDetailError("");
+    try {
+      setDetails(await orderService.getById(order.orderId));
+    } catch (cause) {
+      setDetailError(cause instanceof Error ? cause.message : "Không thể tải món trong đơn.");
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -41,12 +64,22 @@ export function OrderCard({
         <StatusBadge status={order.status} />
       </div>
       <div className="my-4 space-y-2 border-y border-slate-100 py-4">
-        {order.details.map((detail) => (
-          <div key={detail.orderDetailId} className="flex justify-between text-sm">
-            <span className="text-slate-600">{detail.quantity} × {detail.food?.name ?? `Món #${detail.foodId}`}</span>
-            <span className="font-medium text-slate-800">{detail.subtotal.toLocaleString("vi-VN")}đ</span>
+        <button type="button" aria-expanded={showDetails} onClick={() => void toggleDetails()} className="text-sm font-semibold text-emerald-800 hover:underline">
+          {showDetails ? "Ẩn món trong đơn" : "Xem món trong đơn"}
+        </button>
+        {showDetails && (
+          <div className="space-y-2 pt-1">
+            {loadingDetails && <p role="status" className="text-sm text-slate-500">Đang tải chi tiết đơn...</p>}
+            {detailError && <p role="alert" className="text-sm text-red-700">{detailError}</p>}
+            {details?.details.map((detail) => (
+              <div key={detail.orderDetailId} className="flex justify-between gap-3 text-sm">
+                <span className="text-slate-600">{detail.quantity} × {detail.food?.name ?? `Món #${detail.foodId}`}</span>
+                <span className="shrink-0 font-medium text-slate-800">{detail.subtotal.toLocaleString("vi-VN")}đ</span>
+              </div>
+            ))}
+            {details && details.details.length === 0 && <p className="text-sm text-slate-500">Đơn chưa có chi tiết món.</p>}
           </div>
-        ))}
+        )}
       </div>
       <div className="flex justify-between text-sm">
         <span className="text-slate-500">Tổng thanh toán</span>

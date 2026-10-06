@@ -1187,8 +1187,8 @@
 //   },
 // });
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { API_BASE_URL } from "../constants/api";
 import {
   ActivityIndicator,
@@ -1279,7 +1279,8 @@ export default function GiaohangScreen() {
   const router = useRouter();
 
   const [shipper, setShipper] = useState<Shipper | null>(null);
-  const [delivery, setDelivery] = useState<Delivery | null>(null);
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1419,20 +1420,20 @@ export default function GiaohangScreen() {
   // TÌM ĐƠN ĐANG GIAO
   // ======================================================
 
-  const findCurrentDelivery = (deliveries: Delivery[]): Delivery | null => {
-    const current = deliveries.find(
+  const findCurrentDeliveries = (items: Delivery[]): Delivery[] => {
+    const current = items.filter(
       (item) =>
         item.delivery_status === DELIVERY_ACCEPTED ||
         item.delivery_status === DELIVERY_PICKED_UP ||
         item.delivery_status === DELIVERY_DELIVERING,
     );
 
-    console.log("CURRENT DELIVERY:");
+    console.log("CURRENT DELIVERIES:");
     console.log(
-      current ? JSON.stringify(current, null, 2) : "Không có đơn đang giao",
+      JSON.stringify(current, null, 2),
     );
 
-    return current || null;
+    return current;
   };
 
   // ======================================================
@@ -1452,19 +1453,21 @@ export default function GiaohangScreen() {
         fetchDeliveries(),
       ]);
 
-      const currentDelivery = findCurrentDelivery(deliveries);
+      const currentDeliveries = findCurrentDeliveries(deliveries);
 
       setShipper(shipperData);
-      setDelivery(currentDelivery);
+      setDeliveries(currentDeliveries);
+      setErrorMessage("");
 
       console.log("========================================");
       console.log("STATE SAU LOAD");
-      console.log("Delivery:", currentDelivery?.delivery_id);
-      console.log("Delivery status:", currentDelivery?.delivery_status);
-      console.log("Order status:", currentDelivery?.order_status);
+      console.log("Số đơn active:", currentDeliveries.length);
       console.log("========================================");
     } catch (error) {
       console.error("LOAD DATA ERROR:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Không thể tải đơn giao hàng.",
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -1475,9 +1478,11 @@ export default function GiaohangScreen() {
   // LOAD KHI MỞ SCREEN
   // ======================================================
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
 
   // ======================================================
   // REFRESH
@@ -1496,11 +1501,7 @@ export default function GiaohangScreen() {
   // ======================================================
 
   const updateDeliveryStatus = useCallback(
-    async (newStatus: DeliveryStatus) => {
-      if (!delivery) {
-        throw new Error("Không có đơn hàng.");
-      }
-
+    async (delivery: Delivery, newStatus: DeliveryStatus) => {
       console.log("");
       console.log("========================================");
       console.log("UPDATE DELIVERY STATUS");
@@ -1533,132 +1534,28 @@ export default function GiaohangScreen() {
 
       return result;
     },
-    [delivery, fetchWithAuth],
+    [fetchWithAuth],
   );
 
-  // ======================================================
-  // KIỂM TRA CLICK
-  // ======================================================
-
-  const handlePickedUp = async () => {
-    console.log("");
-    console.log("🔥🔥🔥 ĐÃ CLICK NÚT ĐÃ LẤY HÀNG 🔥🔥🔥");
-
-    if (!delivery) {
-      console.log("❌ Không có delivery");
-      return;
-    }
-
-    console.log("Delivery ID:", delivery.delivery_id);
-
-    console.log("Current status:", delivery.delivery_status);
-
-    if (isUpdating) {
-      console.log("❌ Đang cập nhật...");
-      return;
-    }
-
-    if (delivery.delivery_status !== DELIVERY_ACCEPTED) {
-      console.log("❌ Trạng thái hiện tại không phải ACCEPTED");
-
+  const advanceDelivery = async (
+    delivery: Delivery,
+    expectedStatus: DeliveryStatus,
+    nextStatus: DeliveryStatus,
+  ) => {
+    if (isUpdating || delivery.delivery_status !== expectedStatus) {
       return;
     }
 
     try {
       setIsUpdating(true);
-
-      await updateDeliveryStatus(DELIVERY_PICKED_UP);
-
-      console.log("✅ Đã gọi API PICKED_UP thành công");
-
-      // Reload lại DB
+      setErrorMessage("");
+      await updateDeliveryStatus(delivery, nextStatus);
       await loadData();
-
-      console.log("✅ Đã reload dữ liệu sau PICKED_UP");
     } catch (error) {
-      console.error("❌ LỖI PICKED_UP:", error);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  // ======================================================
-  // BẮT ĐẦU GIAO HÀNG
-  // ======================================================
-
-  const handleDelivering = async () => {
-    console.log("");
-    console.log("🔥🔥🔥 ĐÃ CLICK NÚT BẮT ĐẦU GIAO HÀNG 🔥🔥🔥");
-
-    if (!delivery) {
-      console.log("❌ Không có delivery");
-      return;
-    }
-
-    if (isUpdating) {
-      console.log("❌ Đang cập nhật...");
-      return;
-    }
-
-    if (delivery.delivery_status !== DELIVERY_PICKED_UP) {
-      console.log("❌ Trạng thái hiện tại không phải PICKED_UP");
-
-      return;
-    }
-
-    try {
-      setIsUpdating(true);
-
-      await updateDeliveryStatus(DELIVERY_DELIVERING);
-
-      console.log("✅ Đã gọi API DELIVERING thành công");
-
-      await loadData();
-
-      console.log("✅ Đã reload dữ liệu sau DELIVERING");
-    } catch (error) {
-      console.error("❌ LỖI DELIVERING:", error);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  // ======================================================
-  // HOÀN THÀNH
-  // ======================================================
-
-  const handleCompleted = async () => {
-    console.log("");
-    console.log("🔥🔥🔥 ĐÃ CLICK NÚT ĐÃ GIAO HÀNG 🔥🔥🔥");
-
-    if (!delivery) {
-      console.log("❌ Không có delivery");
-      return;
-    }
-
-    if (isUpdating) {
-      console.log("❌ Đang cập nhật...");
-      return;
-    }
-
-    if (delivery.delivery_status !== DELIVERY_DELIVERING) {
-      console.log("❌ Trạng thái hiện tại không phải DELIVERING");
-
-      return;
-    }
-
-    try {
-      setIsUpdating(true);
-
-      await updateDeliveryStatus(DELIVERY_COMPLETED);
-
-      console.log("✅ Đã gọi API COMPLETED thành công");
-
-      await loadData();
-
-      console.log("✅ Đã reload dữ liệu sau COMPLETED");
-    } catch (error) {
-      console.error("❌ LỖI COMPLETED:", error);
+      console.error("DELIVERY STATUS UPDATE ERROR:", error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Không thể cập nhật đơn giao.",
+      );
     } finally {
       setIsUpdating(false);
     }
@@ -1668,98 +1565,53 @@ export default function GiaohangScreen() {
   // RENDER ACTION BUTTON
   // ======================================================
 
-  const renderActionButton = () => {
-    if (!delivery) {
-      return null;
-    }
+  const renderActionButton = (delivery: Delivery) => {
+    const action: {
+      expected: DeliveryStatus;
+      next: DeliveryStatus;
+      label: string;
+    } | null =
+      delivery.delivery_status === DELIVERY_ACCEPTED
+        ? {
+            expected: DELIVERY_ACCEPTED,
+            next: DELIVERY_PICKED_UP,
+            label: "Đã lấy hàng",
+          }
+        : delivery.delivery_status === DELIVERY_PICKED_UP
+          ? {
+              expected: DELIVERY_PICKED_UP,
+              next: DELIVERY_DELIVERING,
+              label: "Bắt đầu giao hàng",
+            }
+          : delivery.delivery_status === DELIVERY_DELIVERING
+            ? {
+                expected: DELIVERY_DELIVERING,
+                next: DELIVERY_COMPLETED,
+                label: "Đã giao hàng",
+              }
+            : null;
 
-    console.log("RENDER BUTTON - STATUS:", delivery.delivery_status);
+    if (!action) return null;
 
-    // ==================================================
-    // ACCEPTED
-    // ==================================================
-
-    if (delivery.delivery_status === DELIVERY_ACCEPTED) {
-      return (
-        <Pressable
-          disabled={isUpdating}
-          onPress={() => {
-            console.log("🟢 PRESSABLE ĐÃ NHẬN CLICK - ĐÃ LẤY HÀNG");
-
-            void handlePickedUp();
-          }}
-          style={({ pressed }) => [
-            styles.actionButton,
-            pressed && styles.actionButtonPressed,
-            isUpdating && styles.actionButtonDisabled,
-          ]}
-        >
-          {isUpdating ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.actionButtonText}>Đã lấy hàng</Text>
-          )}
-        </Pressable>
-      );
-    }
-
-    // ==================================================
-    // PICKED UP
-    // ==================================================
-
-    if (delivery.delivery_status === DELIVERY_PICKED_UP) {
-      return (
-        <Pressable
-          disabled={isUpdating}
-          onPress={() => {
-            console.log("🟢 PRESSABLE ĐÃ NHẬN CLICK - BẮT ĐẦU GIAO");
-
-            void handleDelivering();
-          }}
-          style={({ pressed }) => [
-            styles.actionButton,
-            pressed && styles.actionButtonPressed,
-            isUpdating && styles.actionButtonDisabled,
-          ]}
-        >
-          {isUpdating ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.actionButtonText}>Bắt đầu giao hàng</Text>
-          )}
-        </Pressable>
-      );
-    }
-
-    // ==================================================
-    // DELIVERING
-    // ==================================================
-
-    if (delivery.delivery_status === DELIVERY_DELIVERING) {
-      return (
-        <Pressable
-          disabled={isUpdating}
-          onPress={() => {
-            console.log("🟢 PRESSABLE ĐÃ NHẬN CLICK - ĐÃ GIAO HÀNG");
-
-            void handleCompleted();
-          }}
-          style={({ pressed }) => [
-            styles.actionButton,
-            pressed && styles.actionButtonPressed,
-            isUpdating && styles.actionButtonDisabled,
-          ]}
-        >
-          {isUpdating ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.actionButtonText}>Đã giao hàng</Text>
-          )}
-        </Pressable>
-      );
-    }
-
-    return null;
+    return (
+      <Pressable
+        disabled={isUpdating}
+        onPress={() =>
+          void advanceDelivery(delivery, action.expected, action.next)
+        }
+        style={({ pressed }) => [
+          styles.actionButton,
+          pressed && styles.actionButtonPressed,
+          isUpdating && styles.actionButtonDisabled,
+        ]}
+      >
+        {isUpdating ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text style={styles.actionButtonText}>{action.label}</Text>
+        )}
+      </Pressable>
+    );
   };
 
   // ======================================================
@@ -1843,14 +1695,18 @@ export default function GiaohangScreen() {
             KHÔNG CÓ ĐƠN
         ============================================ */}
 
-        {!delivery && (
+        {errorMessage ? (
+          <Text style={styles.errorMessage}>{errorMessage}</Text>
+        ) : null}
+
+        {deliveries.length === 0 && !errorMessage && (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyIcon}>📦</Text>
 
             <Text style={styles.emptyTitle}>Không có đơn hàng</Text>
 
             <Text style={styles.emptyText}>
-              Hiện tại bạn chưa có đơn hàng đang giao.
+              Hiện tại bạn chưa có đơn nào đang giao. Kéo xuống để làm mới.
             </Text>
           </View>
         )}
@@ -1859,109 +1715,55 @@ export default function GiaohangScreen() {
             DELIVERY
         ============================================ */}
 
-        {delivery && (
-          <>
-            {/* DEBUG */}
-
-            <View style={styles.debugBox}>
-              <Text style={styles.debugTitle}>DEBUG</Text>
-
-              <Text style={styles.debugText}>
-                Delivery ID: {delivery.delivery_id}
-              </Text>
-
-              <Text style={styles.debugText}>
-                Order ID: {delivery.order_id}
-              </Text>
-
-              <Text style={styles.debugText}>
-                Delivery status: {delivery.delivery_status}
-              </Text>
-
-              <Text style={styles.debugText}>
-                Order status: {delivery.order_status}
-              </Text>
-            </View>
-
-            {/* ========================================
-                ORDER INFO
-            ======================================== */}
-
+        {deliveries.map((delivery) => (
+          <View key={delivery.delivery_id}>
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Mã đơn:</Text>
-
                 <Text style={styles.value}>{delivery.order_code}</Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Trạng thái:</Text>
-
-                <Text style={styles.statusText}>
-                  {delivery.delivery_status}
-                </Text>
+                <Text style={styles.statusText}>{delivery.delivery_status}</Text>
               </View>
 
               <View style={styles.infoRow}>
                 <Text style={styles.label}>Tổng tiền:</Text>
-
                 <Text style={styles.priceText}>
                   {Number(delivery.total_amount).toLocaleString("vi-VN")} ₫
                 </Text>
               </View>
             </View>
 
-            {/* ========================================
-                RESTAURANT
-            ======================================== */}
-
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>🏪 Nhà hàng</Text>
-
-              <Text style={styles.restaurantName}>
-                {delivery.restaurant_name}
-              </Text>
-
+              <Text style={styles.restaurantName}>{delivery.restaurant_name}</Text>
               <Text style={styles.address}>{delivery.restaurant_address}</Text>
-
               <Text style={styles.phone}>☎ {delivery.restaurant_phone}</Text>
             </View>
 
-            {/* ========================================
-                CUSTOMER
-            ======================================== */}
-
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>👤 Khách hàng</Text>
-
               <Text style={styles.customerName}>{delivery.receiver_name}</Text>
-
-              <Text style={styles.address}>              {delivery.full_address}</Text>
-
+              <Text style={styles.address}>{delivery.full_address}</Text>
               <Text style={styles.phone}>☎ {delivery.receiver_phone}</Text>
             </View>
 
-            {/* ========================================
-                NOTE
-            ======================================== */}
-
-            {delivery.note && (
+            {delivery.note ? (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>📝 Ghi chú</Text>
-
                 <Text style={styles.note}>{delivery.note}</Text>
               </View>
-            )}
+            ) : null}
 
-            {/* ========================================
-                ACTION
-            ======================================== */}
-
-            <View style={styles.actionContainer}>{renderActionButton()}</View>
-          </>
-        )}
+            <View style={styles.actionContainer}>
+              {renderActionButton(delivery)}
+            </View>
+          </View>
+        ))}
       </ScrollView>
     </View>
   );
@@ -1993,6 +1795,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 16,
     color: "#555",
+  },
+
+  errorMessage: {
+    color: "#b91c1c",
+    backgroundColor: "#fef2f2",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
   },
 
   // ====================================================

@@ -10,6 +10,14 @@ const imageUpload = require('../middleware/imageUpload');
 const catalogReaders = ['CUSTOMER', 'RESTAURANT', 'ADMIN'];
 
 router.get('/restaurants', authenticate, authorizeRoles(...catalogReaders), validation.validateRestaurantList, controller.listRestaurants);
+router.get('/restaurants/me', authenticate, authorizeRoles('RESTAURANT'), controller.getMyRestaurant);
+router.patch(
+  '/restaurants/me',
+  authenticate,
+  authorizeRoles('RESTAURANT'),
+  validation.validateMyRestaurantProfile,
+  controller.updateMyRestaurant
+);
 router.get('/restaurants/:id/categories', authenticate, authorizeRoles(...catalogReaders), validation.validateId, controller.listRestaurantCategories);
 router.get('/restaurants/:id', authenticate, authorizeRoles(...catalogReaders), validation.validateId, controller.getRestaurant);
 router.get('/categories', authenticate, authorizeRoles(...catalogReaders), controller.listCategories);

@@ -2,12 +2,14 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Page, ScreenHeader, Surface } from '@/components/ui';
+import { MAX_SAVED_ADDRESSES } from '@/constants/addresses';
 import { goBackOrReplace } from '@/navigation/back';
 import { usePrototype } from '@/providers/PrototypeProvider';
 import { colors } from '@/theme';
 
 export default function CheckoutAddressScreen() {
   const { addresses, selectedAddressId, selectAddress, isLoading } = usePrototype();
+  const hasReachedAddressLimit = addresses.length >= MAX_SAVED_ADDRESSES;
 
   return (
     <Page contentStyle={styles.content}>
@@ -52,9 +54,17 @@ export default function CheckoutAddressScreen() {
           );
         })}
       </View>
-      <Pressable onPress={() => router.push('/profile/addresses/new')} style={styles.addAddress}>
-        <Text style={styles.addMark}>＋</Text>
-        <Text style={styles.addLabel}>Thêm địa chỉ mới</Text>
+      <Pressable
+        onPress={() => router.push('/profile/addresses/new')}
+        disabled={hasReachedAddressLimit || isLoading}
+        style={[styles.addAddress, hasReachedAddressLimit || isLoading ? styles.addAddressDisabled : null]}
+      >
+        {!hasReachedAddressLimit ? <Text style={styles.addMark}>＋</Text> : null}
+        <Text style={styles.addLabel}>
+          {hasReachedAddressLimit
+            ? `Bạn chỉ có thể tạo tối đa ${MAX_SAVED_ADDRESSES} địa chỉ`
+            : 'Thêm địa chỉ mới'}
+        </Text>
       </Pressable>
       {addresses.length === 0 && !isLoading ? (
         <View style={styles.empty}><Text style={styles.emptyText}>Bạn chưa lưu địa chỉ nào.</Text></View>
@@ -90,6 +100,7 @@ const styles = StyleSheet.create({
   editLink: { alignSelf: 'flex-end' },
   editLabel: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   addAddress: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderWidth: 1, borderStyle: 'dashed', borderColor: '#BBC9BE', borderRadius: 14 },
+  addAddressDisabled: { opacity: 0.55 },
   addMark: { color: colors.accent, fontSize: 20 },
   addLabel: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   empty: { alignItems: 'center', paddingVertical: 16 },

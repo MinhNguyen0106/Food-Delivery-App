@@ -87,7 +87,7 @@ export interface DemoReview {
   rating: number;
   comment: string;
   createdAt: string;
-  status: 'PENDING' | 'VISIBLE';
+  status: 'PENDING' | 'VISIBLE' | 'HIDDEN';
 }
 
 export const restaurants: Restaurant[] = [

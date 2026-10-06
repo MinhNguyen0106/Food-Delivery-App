@@ -37,6 +37,15 @@ exports.reviewId = (req, res, next) => {
   }
 };
 
+exports.reviewRestaurantId = (req, res, next) => {
+  try {
+    positiveInteger(req.params.restaurantId, 'restaurant_id');
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.create = (req, res, next) => {
   try {
     objectBody(req.body, ['order_id', 'rating', 'comment'], ['order_id', 'rating']);

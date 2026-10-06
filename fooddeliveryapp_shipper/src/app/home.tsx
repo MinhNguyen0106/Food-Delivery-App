@@ -1080,7 +1080,10 @@ export default function HomeScreen() {
         // LẤY ĐƠN HÀNG CÓ THỂ NHẬN
         // ==============================================
 
-        if (currentShipper.status_id === STATUS_ONLINE_ID) {
+        if (
+          currentShipper.status_id === STATUS_ONLINE_ID ||
+          currentShipper.status_id === STATUS_BUSY_ID
+        ) {
           await fetchOrders();
         } else {
           setOrders([]);
@@ -1247,7 +1250,7 @@ export default function HomeScreen() {
     // PHẢI ONLINE
     // ==============================================
 
-    if (!isOnline) {
+    if (!isOnline && !isBusy) {
       if (Platform.OS === "web") {
         window.alert(
           "Bạn cần chuyển sang trạng thái Online trước khi nhận đơn.",
@@ -1257,20 +1260,6 @@ export default function HomeScreen() {
           "Chưa Online",
           "Bạn cần chuyển sang trạng thái Online trước khi nhận đơn.",
         );
-      }
-
-      return;
-    }
-
-    // ==============================================
-    // KHÔNG ĐƯỢC NHẬN ĐƠN KHI ĐANG BUSY
-    // ==============================================
-
-    if (isBusy) {
-      if (Platform.OS === "web") {
-        window.alert("Bạn đang có đơn hàng đang giao.");
-      } else {
-        Alert.alert("Đang giao hàng", "Bạn đang có đơn hàng đang giao.");
       }
 
       return;
@@ -1619,7 +1608,7 @@ export default function HomeScreen() {
 
               <Text style={styles.statusCardText}>
                 {isBusy
-                  ? "Hoàn thành đơn hiện tại trước khi nhận đơn mới."
+                  ? "Bạn có thể nhận thêm đơn; trạng thái sẽ trở về Online khi hoàn tất các đơn đang giao."
                   : isOnline
                     ? "Các đơn hàng mới sẽ hiển thị bên dưới."
                     : "Bật Online để bắt đầu nhận đơn hàng."}
@@ -1824,20 +1813,20 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.acceptButton,
-                      (!isOnline || isBusy || isProcessing) &&
+                      (!isOnline && !isBusy || isProcessing) &&
                         styles.acceptButtonDisabled,
                     ]}
                     onPress={() => acceptOrder(order.delivery_id, order.order_id)}
-                    disabled={!isOnline || isBusy || isProcessing}
+                    disabled={(!isOnline && !isBusy) || isProcessing}
                   >
                     {isProcessing ? (
                       <ActivityIndicator color="#FFFFFF" size="small" />
                     ) : (
                       <Text style={styles.acceptButtonText}>
-                        {!isOnline
+                        {!isOnline && !isBusy
                           ? "BẬT ONLINE ĐỂ NHẬN ĐƠN"
                           : isBusy
-                            ? "ĐANG CÓ ĐƠN KHÁC"
+                            ? "NHẬN THÊM ĐƠN HÀNG"
                             : "NHẬN ĐƠN HÀNG"}
                       </Text>
                     )}

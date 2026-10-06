@@ -1,6 +1,18 @@
 import apiClient, { unwrapResponse } from "@/services/api.client";
 import type { RestaurantRecord } from "@/types/service-api";
 
+export type RestaurantProfileUpdate = Pick<
+  RestaurantRecord,
+  | "name"
+  | "address"
+  | "phone"
+  | "description"
+  | "latitude"
+  | "longitude"
+  | "opening_time"
+  | "closing_time"
+>;
+
 export interface RestaurantCategoryRecord {
   category_id: number;
   name: string;
@@ -20,6 +32,20 @@ export interface RestaurantFilters {
 }
 
 export const restaurantInfoService = {
+  async getMyProfile(): Promise<RestaurantRecord> {
+    return unwrapResponse(
+      await apiClient.get<RestaurantRecord>("/restaurants/me"),
+    );
+  },
+
+  async updateMyProfile(
+    profile: RestaurantProfileUpdate,
+  ): Promise<RestaurantRecord> {
+    return unwrapResponse(
+      await apiClient.patch<RestaurantRecord>("/restaurants/me", profile),
+    );
+  },
+
   async getRestaurants(
     filters: RestaurantFilters = {},
   ): Promise<RestaurantRecord[]> {

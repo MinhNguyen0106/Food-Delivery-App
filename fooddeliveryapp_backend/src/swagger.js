@@ -168,13 +168,46 @@ paths["/api/restaurants"].get = {
     queryParameter("categoryId", "Shared active category ID", { type: "integer", minimum: 1 }),
     queryParameter("minPrice", "Minimum available food price", { type: "number", minimum: 0 }),
     queryParameter("maxPrice", "Maximum available food price", { type: "number", minimum: 0 }),
-    queryParameter("minRating", "Minimum visible-review average", { type: "number", minimum: 0, maximum: 5 }),
+    queryParameter("minRating", "Minimum average of visible reviews", { type: "number", minimum: 0, maximum: 5 }),
     queryParameter("isOpen", "Filter by current opening hours", { type: "boolean" }),
     queryParameter("latitude", "Search coordinate latitude", { type: "number", minimum: -90, maximum: 90 }),
     queryParameter("longitude", "Search coordinate longitude", { type: "number", minimum: -180, maximum: 180 }),
     queryParameter("maxDistanceKm", "Maximum distance from the supplied coordinates", { type: "number", minimum: 0.01 })
   ],
   responses: recordResponse("Restaurants returned")
+};
+paths["/api/restaurants/me"] = {
+  get: {
+    summary: "Get the authenticated Restaurant's own business profile",
+    responses: recordResponse("Restaurant profile returned")
+  },
+  patch: {
+    summary: "Update editable fields on the authenticated Restaurant's own profile",
+    description: "Restaurant ID and status are derived from the authenticated account and cannot be supplied in the request.",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            minProperties: 1,
+            additionalProperties: false,
+            properties: {
+              name: { type: "string", minLength: 1, maxLength: 150 },
+              address: { type: "string", minLength: 1, maxLength: 255 },
+              phone: { type: "string", pattern: "^\\+?[0-9]{8,15}$" },
+              description: { type: ["string", "null"], maxLength: 2000 },
+              latitude: { type: "number", minimum: -90, maximum: 90 },
+              longitude: { type: "number", minimum: -180, maximum: 180 },
+              opening_time: { type: ["string", "null"], pattern: "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$" },
+              closing_time: { type: ["string", "null"], pattern: "^([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d)?$" }
+            }
+          }
+        }
+      }
+    },
+    responses: recordResponse("Restaurant profile updated")
+  }
 };
 paths["/api/restaurants/{id}"].get = {
   summary: "Get a restaurant visible to the authenticated actor",
@@ -331,9 +364,14 @@ paths["/api/addresses"].get = {
   responses: recordResponse("Addresses returned")
 };
 paths["/api/addresses"].post = {
-  summary: "Create an address for the authenticated Customer",
+  summary: "Create an address for the authenticated Customer (maximum three addresses)",
   requestBody: { $ref: "#/components/requestBodies/Record" },
-  responses: recordResponse("Address created", 201)
+  responses: {
+    ...recordResponse("Address created", 201),
+    409: response("Customer already has three saved addresses", {
+      $ref: "#/components/schemas/Error"
+    })
+  }
 };
 paths["/api/addresses/{id}"] = {
   parameters: [idParameter("address")],
@@ -500,7 +538,7 @@ paths["/api/reviews"] = {
   },
   post: {
     summary: "Create a Review for the authenticated Customer's completed Order",
-    description: "One Review per Order. Review status is assigned by the server as PENDING.",
+    description: "One Review per Order. Reviews are VISIBLE immediately; Admin may hide or restore a review that violates community rules.",
     requestBody: {
       required: true,
       content: {
@@ -530,7 +568,21 @@ paths["/api/reviews/mine"] = {
 paths["/api/reviews/restaurant/mine"] = {
   get: {
     summary: "List visible Reviews for the authenticated Restaurant's Orders",
+    description: "Legacy PENDING reviews are treated as visible.",
     responses: recordResponse("Restaurant Reviews returned")
+  }
+};
+paths["/api/reviews/restaurant/{restaurantId}"] = {
+  parameters: [{
+    name: "restaurantId",
+    in: "path",
+    required: true,
+    schema: { type: "integer", minimum: 1 }
+  }],
+  get: {
+    summary: "List public Reviews for a Restaurant (Customer only)",
+    description: "Returns VISIBLE reviews and legacy PENDING reviews, without customer identifiers.",
+    responses: recordResponse("Public Restaurant Reviews returned")
   }
 };
 paths["/api/reviews/{id}"] = {
@@ -659,7 +711,7 @@ paths["/api/deliveries/me/status"] = {
 };
 paths["/api/deliveries/available"] = {
   get: {
-    summary: "List ready, unassigned deliveries for an ONLINE Shipper",
+    summary: "List ready, unassigned deliveries for an ONLINE or BUSY Shipper",
     responses: recordResponse("Available deliveries returned")
   }
 };

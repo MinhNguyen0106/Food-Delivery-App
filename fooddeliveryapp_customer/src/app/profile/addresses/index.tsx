@@ -2,18 +2,20 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton, Page, ScreenHeader, Surface, showConfirmation, showNotice } from '@/components/ui';
+import { MAX_SAVED_ADDRESSES } from '@/constants/addresses';
 import { goBackOrReplace } from '@/navigation/back';
 import { usePrototype } from '@/providers/PrototypeProvider';
 import { colors } from '@/theme';
 
 export default function AddressBookScreen() {
   const { addresses, setDefaultAddress, deleteAddress, isLoading } = usePrototype();
+  const hasReachedAddressLimit = addresses.length >= MAX_SAVED_ADDRESSES;
 
   return (
     <Page contentStyle={styles.content}>
       <ScreenHeader
         title="Sổ địa chỉ"
-        subtitle="Quản lý địa chỉ giao hàng đã lưu."
+        subtitle={`${addresses.length}/${MAX_SAVED_ADDRESSES} địa chỉ · Quản lý địa chỉ giao hàng đã lưu.`}
         onBack={() => goBackOrReplace('/account')}
       />
       {isLoading ? <Text style={styles.emptyCopy}>Đang tải địa chỉ đã lưu...</Text> : null}
@@ -54,7 +56,12 @@ export default function AddressBookScreen() {
       )      ) : !isLoading ? (
         <View style={styles.empty}><Text style={styles.emptyTitle}>Chưa có địa chỉ</Text><Text style={styles.emptyCopy}>Thêm địa chỉ để chọn nhanh khi đặt món.</Text></View>
       ) : null}
-      <AppButton label="＋  Thêm địa chỉ mới" variant="secondary" onPress={() => router.push('/profile/addresses/new')} />
+      <AppButton
+        label={hasReachedAddressLimit ? `Bạn chỉ có thể tạo tối đa ${MAX_SAVED_ADDRESSES} địa chỉ` : '＋  Thêm địa chỉ mới'}
+        variant="secondary"
+        disabled={hasReachedAddressLimit || isLoading}
+        onPress={() => router.push('/profile/addresses/new')}
+      />
     </Page>
   );
 }

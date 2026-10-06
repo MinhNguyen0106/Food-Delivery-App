@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { authService } from "@/services/auth.service";
+import { authService, LOGIN_FAILURE_MESSAGE } from "@/services/auth.service";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function AdminLoginPage() {
       if (result.user.role !== "ADMIN") {
         window.localStorage.removeItem("accessToken");
         window.localStorage.removeItem("token");
-        setError("Tài khoản này không có quyền quản trị Admin.");
+        setError(LOGIN_FAILURE_MESSAGE);
         return;
       }
       router.replace("/admin/dashboard");

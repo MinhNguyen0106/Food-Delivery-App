@@ -274,7 +274,8 @@ IDs are derived from the token/database identity, not supplied in the request.
 
   `categoryId`/price filters require available foods in an active category;
 
-  rating uses visible reviews. Latitude and longitude must be supplied
+  rating uses visible reviews (including legacy reviews previously marked
+  PENDING). Latitude and longitude must be supplied
 
   together; `maxDistanceKm` requires both.
 
@@ -395,6 +396,10 @@ All address routes are Customer-only and scoped to the authenticated Customer.
 #### Create address
 
 - **Method / endpoint:** `POST /api/addresses`
+
+- Each Customer can save at most three addresses. Creating a fourth address
+  returns `409` with error code `ADDRESS_LIMIT_REACHED`; updating existing
+  addresses is still allowed.
 
 - **Body:** required `address_name`, `receiver_name`, `receiver_phone`,
 
@@ -652,7 +657,10 @@ pending payment.
 
   (integer 1–5); optional `comment` (string/null, max 1000).
 
-- **Success:** `201`, `{success:true,data:{reviewId,orderId,status:"PENDING"}}`.
+- **Success:** `201`, `{success:true,data:{reviewId,orderId,status:"VISIBLE"}}`.
+
+- Reviews are visible immediately; Admin may hide or restore reviews that
+  violate community rules.
 
 - **Eligibility:** order must belong to this Customer and be COMPLETED; one
 
@@ -673,6 +681,15 @@ pending payment.
 - **Success:** `200`, own review array; includes review ID, order ID, rating,
 
   comment, moderation status, dates and restaurant name.
+
+#### List public restaurant reviews
+
+- **Method / endpoint:** `GET /api/reviews/restaurant/{restaurantId}`
+
+- **Role:** Customer.
+
+- **Success:** `200`, visible reviews for the restaurant; customer identifiers
+  are not returned. Previously pending reviews are also shown.
 
 #### Get own review
 
@@ -710,9 +727,24 @@ accept `restaurant_id` to select an owner.
 
 `GET /api/auth/me` returns the safe identity/profile. `PATCH /api/auth/me` can
 
-change email only for Restaurant accounts. There is no dedicated API to edit
+change email only for Restaurant accounts. The following owner-scoped endpoints
+read and update the Restaurant business profile:
 
-the Restaurant business profile fields.
+- `GET /api/restaurants/me`: returns the authenticated Restaurant's profile.
+- `PATCH /api/restaurants/me`: accepts a non-empty subset of `name`, `address`,
+  `phone`, `description`, `latitude`, `longitude`, `opening_time`, and
+  `closing_time`. Opening and closing times must be supplied together; use
+  `null` to clear both. Restaurant ID and status cannot be changed by this
+  endpoint.
+- **Ownership:** Restaurant ID is resolved from the authenticated token and
+  updates additionally match the owning user ID.
+- **Success:** `200`, `{success:true,data:<Restaurant profile>}`.
+- **Errors:** `400` invalid/unsupported profile fields; `401` invalid token;
+  `403` incorrect role or unavailable account; `404` Restaurant profile not
+  found; `500` unexpected/database error.
+
+Email and password changes continue to use `PATCH /api/auth/me` and
+`POST /api/auth/change-password` from section 2.
 
 ### 4.2 Categories
 
@@ -758,7 +790,8 @@ Every order is scoped to the authenticated Restaurant.
 
 ### 4.5 Reviews
 
-- `GET /api/reviews/restaurant/mine`: only VISIBLE reviews for this
+- `GET /api/reviews/restaurant/mine`: visible reviews (including legacy
+  PENDING reviews) for this
 
   Restaurant's orders; customer ID is not included.
 
@@ -1011,6 +1044,8 @@ are Restaurant-only; Admin has no dedicated Food create/update/delete API.
 - `GET /api/reviews/{id}`: detail.
 
 - `PATCH /api/reviews/{id}/status`: body `{ "status": "VISIBLE"|"HIDDEN" }`.
+  Reviews appear immediately after submission. Admin may hide violating reviews
+  and restore them by setting `VISIBLE`.
 
 - Success: `200`; moderation returns `{reviewId,previousStatus,status}` in data.
 

@@ -44,6 +44,17 @@ exports.restaurantList = async (req, res, next) => {
   }
 };
 
+exports.publicRestaurantList = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      success: true,
+      data: await reviewService.listPublicRestaurant(req.params.restaurantId, req.user),
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.get = async (req, res, next) => {
   try {
     return res.status(200).json({

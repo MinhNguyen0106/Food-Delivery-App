@@ -1,13 +1,24 @@
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { ListPagination } from '@/components/ListPagination';
 import { AppButton, Page, ScreenHeader, Surface, showNotice } from '@/components/ui';
 import { formatCurrency } from '@/data/demo';
 import { goBackOrReplace } from '@/navigation/back';
 import { usePrototype } from '@/providers/PrototypeProvider';
 import { colors } from '@/theme';
 
+const VOUCHERS_PER_PAGE = 6;
+
 export default function VoucherScreen() {
   const { selectedVoucherCode, selectVoucher, vouchers, isLoading } = usePrototype();
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(vouchers.length / VOUCHERS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleVouchers = vouchers.slice(
+    (currentPage - 1) * VOUCHERS_PER_PAGE,
+    currentPage * VOUCHERS_PER_PAGE,
+  );
 
   return (
     <Page contentStyle={styles.content}>
@@ -17,7 +28,7 @@ export default function VoucherScreen() {
         onBack={() => goBackOrReplace('/account')}
       />
       {isLoading ? <Text style={styles.noteText}>Đang tải ưu đãi...</Text> : null}
-      {vouchers.map((voucher, index) => {
+      {visibleVouchers.map((voucher, index) => {
         const selected = voucher.code === selectedVoucherCode;
         return (
           <Surface key={voucher.code} style={styles.voucherCard}>
@@ -60,6 +71,12 @@ export default function VoucherScreen() {
           </Surface>
         );
       })}
+      <ListPagination
+        page={currentPage}
+        pageSize={VOUCHERS_PER_PAGE}
+        total={vouchers.length}
+        onPageChange={setPage}
+      />
       <View style={styles.note}>
         <Text style={styles.noteTitle}>Lưu ý</Text>
         <Text style={styles.noteText}>Mỗi tài khoản chỉ được dùng từng voucher một lần. Voucher được áp dụng vào giỏ hàng hiện tại; máy chủ xác nhận điều kiện khi báo giá và đặt hàng.</Text>

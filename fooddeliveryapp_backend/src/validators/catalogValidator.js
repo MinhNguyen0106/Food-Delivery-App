@@ -62,6 +62,76 @@ function validateRestaurantList(req, res, next) {
   }
 }
 
+function validateMyRestaurantProfile(req, res, next) {
+  try {
+    const data = req.body;
+    const allowed = new Set([
+      'name',
+      'address',
+      'phone',
+      'description',
+      'latitude',
+      'longitude',
+      'opening_time',
+      'closing_time',
+    ]);
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      Object.keys(data).length === 0 ||
+      Object.keys(data).some((field) => !allowed.has(field))) {
+      invalid('Request must contain supported Restaurant profile fields');
+    }
+
+    for (const [field, maxLength] of [['name', 150], ['address', 255]]) {
+      if (data[field] !== undefined &&
+        (typeof data[field] !== 'string' || !data[field].trim() || data[field].trim().length > maxLength)) {
+        invalid(`${field} must contain between 1 and ${maxLength} characters`);
+      }
+    }
+    if (data.phone !== undefined &&
+      (typeof data.phone !== 'string' || !/^\+?[0-9]{8,15}$/.test(data.phone.trim()))) {
+      invalid('phone must be a valid phone number');
+    }
+    if (data.description !== undefined && data.description !== null &&
+      (typeof data.description !== 'string' || data.description.length > 2000)) {
+      invalid('description must be at most 2000 characters or null');
+    }
+
+    for (const [field, min, max] of [['latitude', -90, 90], ['longitude', -180, 180]]) {
+      if (data[field] === undefined) continue;
+      const value = Number(data[field]);
+      if ((typeof data[field] !== 'number' && typeof data[field] !== 'string') ||
+        String(data[field]).trim() === '' || !Number.isFinite(value) || value < min || value > max) {
+        invalid(`${field} must be between ${min} and ${max}`);
+      }
+      data[field] = value;
+    }
+    if ((data.latitude === undefined) !== (data.longitude === undefined)) {
+      invalid('latitude and longitude must be provided together');
+    }
+
+    for (const field of ['opening_time', 'closing_time']) {
+      if (data[field] === undefined) continue;
+      if (data[field] === null || data[field] === '') {
+        data[field] = null;
+        continue;
+      }
+      if (typeof data[field] !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(data[field])) {
+        invalid(`${field} must use HH:mm or HH:mm:ss`);
+      }
+      if (data[field].length === 5) data[field] += ':00';
+    }
+    if (
+      (data.opening_time !== undefined && data.closing_time === undefined) ||
+      (data.closing_time !== undefined && data.opening_time === undefined)
+    ) {
+      invalid('opening_time and closing_time must be provided together');
+    }
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
 function validateFoodList(req, res, next) {
   try {
     const query = req.query;
@@ -164,6 +234,7 @@ function validateCategoryWrite(req, res, next) {
 
 module.exports = {
   validateRestaurantList,
+  validateMyRestaurantProfile,
   validateFoodList,
   validateId,
   validateFoodWrite,

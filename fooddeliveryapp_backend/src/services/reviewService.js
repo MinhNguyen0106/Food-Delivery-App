@@ -60,9 +60,9 @@ module.exports = {
           comment: input.comment ?? null,
         });
         if (!reviewId) {
-          throw new AppError('Review moderation status is not configured', 500, 'CONFIGURATION_ERROR');
+          throw new AppError('Visible review status is not configured', 500, 'CONFIGURATION_ERROR');
         }
-        return { reviewId, orderId, status: 'PENDING' };
+        return { reviewId, orderId, status: 'VISIBLE' };
       } catch (error) {
         return duplicateReview(error);
       }
@@ -82,6 +82,11 @@ module.exports = {
   async listRestaurant(actor) {
     requireRole(actor, 'RESTAURANT');
     return model.listRestaurant(positiveId(actor.restaurantId, 'restaurant_id'));
+  },
+
+  async listPublicRestaurant(restaurantIdValue, actor) {
+    requireRole(actor, 'CUSTOMER');
+    return model.listPublicRestaurant(positiveId(restaurantIdValue, 'restaurant_id'));
   },
 
   async get(reviewIdValue, actor) {

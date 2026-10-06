@@ -757,7 +757,7 @@ export default function ProfileScreen() {
                 {profile.status_id === STATUS_ONLINE_ID
                   ? "Bạn đang sẵn sàng nhận đơn hàng."
                   : profile.status_id === STATUS_BUSY_ID
-                    ? "Bạn đang thực hiện một đơn giao hàng."
+                    ? "Bạn đang thực hiện các đơn giao hàng."
                     : "Bạn đang ngoại tuyến và chưa nhận đơn."}
               </Text>
             </View>

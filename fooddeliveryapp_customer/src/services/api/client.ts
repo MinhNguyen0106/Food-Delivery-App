@@ -142,12 +142,12 @@ export function getErrorMessage(
   context?: 'login' | 'change-password',
 ): string {
   if (error instanceof ApiError) {
+    if (context === 'login' && (error.status === 401 || error.status === 403)) {
+      return 'Tài khoản hoặc mật khẩu không đúng.';
+    }
     if (error.status === 401) {
       if (error.code === 'INVALID_TOKEN' || error.code === 'UNAUTHENTICATED') {
         return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
-      }
-      if (error.code === 'INVALID_CREDENTIALS' && context === 'login') {
-        return 'Email hoặc mật khẩu chưa chính xác.';
       }
       if (error.code === 'INVALID_CREDENTIALS' && context === 'change-password') {
         return 'Mật khẩu hiện tại chưa chính xác.';
@@ -162,6 +162,7 @@ export function getErrorMessage(
     if (error.status === 409) {
       const conflictMessages: Record<string, string> = {
         ACCOUNT_EXISTS: 'Email hoặc số điện thoại đã được sử dụng.',
+        ADDRESS_LIMIT_REACHED: 'Bạn chỉ có thể lưu tối đa 3 địa chỉ. Hãy xóa một địa chỉ cũ nếu muốn thêm địa chỉ mới.',
         EMPTY_CART: 'Giỏ hàng đang trống.',
         CART_RESTAURANT_MISMATCH: 'Giỏ hàng chỉ có thể chứa món từ một nhà hàng.',
         FOOD_UNAVAILABLE: 'Một món trong giỏ hiện không còn phục vụ.',

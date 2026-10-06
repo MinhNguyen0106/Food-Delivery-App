@@ -231,7 +231,7 @@ function mapOrder(value: unknown, reviewedOrderIds: Set<string> = new Set()): De
 function mapReview(value: unknown): DemoReview {
   const review = record(value, 'đánh giá');
   const status = text(review.status, 'review.status');
-  if (status !== 'PENDING' && status !== 'VISIBLE') {
+  if (status !== 'PENDING' && status !== 'VISIBLE' && status !== 'HIDDEN') {
     throw new Error('Máy chủ trả về trạng thái đánh giá không hợp lệ.');
   }
   return {
@@ -244,7 +244,7 @@ function mapReview(value: unknown): DemoReview {
     rating: id(review.rating, 'rating'),
     comment: text(review.comment, 'comment', true),
     createdAt: dateLabel(text(review.created_at, 'created_at')),
-    status,
+    status: status === 'PENDING' ? 'VISIBLE' : status,
   };
 }
 

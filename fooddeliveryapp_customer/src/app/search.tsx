@@ -3,6 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { FoodRow, RestaurantCard } from '@/components/commerce';
+import { ListPagination } from '@/components/ListPagination';
 import { AppButton, Chip, FormField, Page, RequestState, ScreenHeader, SearchField, Surface } from '@/components/ui';
 import { useApiResource } from '@/hooks/useApiResource';
 import { goBackOrReplace } from '@/navigation/back';
@@ -23,6 +24,8 @@ interface SearchFilters {
   maxDistanceKm?: number;
 }
 
+const SEARCH_RESULTS_PER_PAGE = 8;
+
 export default function SearchScreen() {
   const params = useLocalSearchParams<{ categoryId?: string }>();
   const { token } = useSession();
@@ -42,6 +45,7 @@ export default function SearchScreen() {
   const [maxDistanceInput, setMaxDistanceInput] = useState('');
   const [filters, setFilters] = useState<SearchFilters>({});
   const [filterError, setFilterError] = useState('');
+  const [pageState, setPageState] = useState({ key: '', page: 1 });
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -88,6 +92,32 @@ export default function SearchScreen() {
     return { kind: 'foods', items: foods } satisfies SearchResultData;
   }, [categoryId, debouncedQuery, filters, openOnly, selectedAddress, token, type]);
   const { data, error, isLoading, retry } = useApiResource(loadResults);
+  const pageKey = JSON.stringify([
+    type,
+    debouncedQuery,
+    categoryId,
+    openOnly,
+    filters,
+    selectedAddressId,
+  ]);
+  const resultCount = data?.items.length ?? 0;
+  const resultPageCount = Math.max(1, Math.ceil(resultCount / SEARCH_RESULTS_PER_PAGE));
+  const resultPage = Math.min(
+    pageState.key === pageKey ? pageState.page : 1,
+    resultPageCount,
+  );
+  const visibleRestaurants = data?.kind === 'restaurants'
+    ? data.items.slice(
+        (resultPage - 1) * SEARCH_RESULTS_PER_PAGE,
+        resultPage * SEARCH_RESULTS_PER_PAGE,
+      )
+    : [];
+  const visibleFoods = data?.kind === 'foods'
+    ? data.items.slice(
+        (resultPage - 1) * SEARCH_RESULTS_PER_PAGE,
+        resultPage * SEARCH_RESULTS_PER_PAGE,
+      )
+    : [];
 
   function applyFilters() {
     setFilterError('');
@@ -112,11 +142,13 @@ export default function SearchScreen() {
         return;
     }
 
+    setPageState({ key: pageKey, page: 1 });
     setFilters({ minPrice, maxPrice, minRating, maxDistanceKm });
     setFiltersOpen(false);
   }
 
   function resetFilters() {
+    setPageState({ key: pageKey, page: 1 });
     setMinPriceInput('');
     setMaxPriceInput('');
     setMinRatingInput('');
@@ -135,7 +167,10 @@ export default function SearchScreen() {
       />
       <SearchField
         value={query}
-        onChangeText={setQuery}
+        onChangeText={(value) => {
+          setPageState({ key: pageKey, page: 1 });
+          setQuery(value);
+        }}
         autoFocus
         placeholder="Tên món hoặc nhà hàng"
       />
@@ -145,7 +180,10 @@ export default function SearchScreen() {
             key={item}
             accessibilityRole="button"
             accessibilityState={{ selected: type === item }}
-            onPress={() => setType(item)}
+            onPress={() => {
+              setPageState({ key: pageKey, page: 1 });
+              setType(item);
+            }}
           >
             <Text style={[styles.segmentLabel, type === item ? styles.segmentSelected : null]}>
               {item}
@@ -157,21 +195,30 @@ export default function SearchScreen() {
         <Chip
           label="Tất cả"
           selected={!categoryId}
-          onPress={() => setCategoryId('')}
+          onPress={() => {
+            setPageState({ key: pageKey, page: 1 });
+            setCategoryId('');
+          }}
         />
         {(categoryResource.data ?? []).map((category) => (
           <Chip
             key={category.id}
             label={category.name}
             selected={categoryId === String(category.id)}
-            onPress={() => setCategoryId(String(category.id))}
+            onPress={() => {
+              setPageState({ key: pageKey, page: 1 });
+              setCategoryId(String(category.id));
+            }}
           />
         ))}
         {type === 'Nhà hàng' ? (
           <Chip
             label={openOnly ? 'Đang mở ✓' : 'Đang mở'}
             selected={openOnly}
-            onPress={() => setOpenOnly((value) => !value)}
+            onPress={() => {
+              setPageState({ key: pageKey, page: 1 });
+              setOpenOnly((value) => !value);
+            }}
           />
         ) : null}
       </ScrollView>
@@ -258,15 +305,27 @@ export default function SearchScreen() {
         <EmptyResults query={debouncedQuery} />
       ) : data.kind === 'restaurants' ? (
         <View style={styles.results}>
-          {data.items.map((restaurant) => (
+          {visibleRestaurants.map((restaurant) => (
             <RestaurantCard key={restaurant.id} restaurant={restaurant} />
           ))}
+          <ListPagination
+            page={resultPage}
+            pageSize={SEARCH_RESULTS_PER_PAGE}
+            total={resultCount}
+            onPageChange={(page) => setPageState({ key: pageKey, page })}
+          />
         </View>
       ) : (
         <Surface style={styles.foodResults}>
-          {data.items.map((food) => (
+          {visibleFoods.map((food) => (
             <FoodRow key={food.id} food={food} />
           ))}
+          <ListPagination
+            page={resultPage}
+            pageSize={SEARCH_RESULTS_PER_PAGE}
+            total={resultCount}
+            onPageChange={(page) => setPageState({ key: pageKey, page })}
+          />
         </Surface>
       )}
     </Page>

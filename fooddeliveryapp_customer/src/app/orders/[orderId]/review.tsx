@@ -26,7 +26,7 @@ export default function WriteReviewScreen() {
       return;
     }
     if (await addReview(order.id, rating, comment.trim())) {
-      showNotice('Cảm ơn bạn', 'Đánh giá đã được gửi để kiểm duyệt.');
+      showNotice('Cảm ơn bạn', 'Đánh giá của bạn đã được hiển thị công khai.');
       router.replace('/reviews');
     }
   }
@@ -70,7 +70,7 @@ export default function WriteReviewScreen() {
       />
       <Text style={styles.counter}>{comment.length}/1000</Text>
       <AppButton label="Gửi đánh giá" onPress={submit} disabled={isLoading || !order || order.status !== 'COMPLETED' || order.reviewed} />
-      <Text style={styles.disclaimer}>Đánh giá của bạn sẽ được gửi để kiểm duyệt trước khi hiển thị.</Text>
+      <Text style={styles.disclaimer}>Đánh giá sẽ được hiển thị ngay. Quản trị viên có thể ẩn nội dung vi phạm quy định cộng đồng.</Text>
     </Page>
   );
 }

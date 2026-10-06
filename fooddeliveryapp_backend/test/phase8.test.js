@@ -136,12 +136,16 @@ test('OpenAPI documents Phase 8 endpoints and has no fictitious Admin report rou
     '/api/admin/orders/{id}',
     '/api/orders/quote',
     '/api/deliveries/history',
+    '/api/restaurants/me',
     '/api/reports/admin/summary',
     '/api/reports/admin/revenue',
     '/api/reports/restaurant/revenue',
+    '/api/reviews/restaurant/{restaurantId}',
   ]) {
-    assert.ok(swagger.paths[path], `missing OpenAPI path ${path}`);
+   assert.ok(swagger.paths[path], `missing OpenAPI path ${path}`);
   }
+  assert.ok(swagger.paths['/api/reviews/restaurant/{restaurantId}'].get);
+  assert.ok(swagger.paths['/api/addresses'].post.responses[409]);
   assert.equal(swagger.paths['/api/admin/summary'], undefined);
   assert.equal(swagger.paths['/api/carts/{id}'], undefined);
   assert.ok(swagger.paths['/api/carts'].get);
@@ -267,6 +271,8 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
   assert.equal(unauthorized.success, false);
   assert.match(unauthorized.message, /required/i);
   assert.equal(unauthorized.error, 'UNAUTHENTICATED');
+  const restaurantProfileUnauthenticated = await fetch('/api/restaurants/me');
+  assert.equal(restaurantProfileUnauthenticated.status, 401);
 
   const customerToken = jwt.sign(
     { role: 'CUSTOMER' },
@@ -281,6 +287,9 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
   const forbiddenAdmin = await fetch('/api/admin/customers', customerToken);
   assert.equal(forbiddenAdmin.status, 403);
   assert.equal(JSON.parse(forbiddenAdmin.body).error, 'FORBIDDEN');
+  const customerRestaurantProfile = await fetch('/api/restaurants/me', customerToken);
+  assert.equal(customerRestaurantProfile.status, 403);
+  assert.equal(JSON.parse(customerRestaurantProfile.body).error, 'FORBIDDEN');
 
   const suspendedRestaurantToken = jwt.sign(
     { role: 'RESTAURANT' },

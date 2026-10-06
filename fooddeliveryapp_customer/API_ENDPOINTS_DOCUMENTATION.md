@@ -403,6 +403,10 @@ All address routes are Customer-only and scoped to the authenticated Customer.
 
 - **Success:** `201`, `{ success: true, data: <created address> }`.
 
+- **Limit:** Each Customer can save at most three addresses. Creating a fourth
+  returns `409` with error code `ADDRESS_LIMIT_REACHED`; delete an existing
+  address before adding another.
+
 - **Validation:** text lengths: address/receiver 100, phone 20,
 
   full address/note 255; phone 8–15 digits optionally prefixed by `+`;

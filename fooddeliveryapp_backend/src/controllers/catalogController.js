@@ -12,6 +12,15 @@ function handle(action) {
 }
 
 exports.listRestaurants = handle((req) => service.listRestaurants(req.query, req.user));
+exports.getMyRestaurant = handle((req) => service.getMyRestaurant(req.user));
+exports.updateMyRestaurant = async (req, res, next) => {
+  try {
+    const data = await service.updateMyRestaurant(req.user, req.body);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
 exports.getRestaurant = handle((req) => service.getRestaurant(req.params.id, req.user));
 exports.listRestaurantCategories = handle(
   (req) => service.listRestaurantCategories(req.params.id, req.user)

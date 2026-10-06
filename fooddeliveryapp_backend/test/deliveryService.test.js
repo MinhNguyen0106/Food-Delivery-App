@@ -48,6 +48,7 @@ test('completing COD delivery reconciles a stale payment amount to the order tot
     paidAmount = amount;
     return 1;
   });
+  replace('hasActiveDelivery', async () => false);
   replace('getLookupId', async () => 2);
   replace('updateShipperStatus', async () => 1);
   console.warn = (message) => warnings.push(message);

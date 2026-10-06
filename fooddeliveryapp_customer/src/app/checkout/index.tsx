@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import DeliveryRouteMap from '@/components/maps/DeliveryRouteMap';
+import { ListPagination } from '@/components/ListPagination';
 import {
   AppButton,
   BottomAction,
@@ -28,6 +29,8 @@ import {
   type MapCoordinate,
 } from '@/services/maps/deliveryRoute';
 import { colors } from '@/theme';
+
+const CHECKOUT_ITEMS_PER_PAGE = 8;
 
 interface QuoteResponse {
   key: string;
@@ -79,6 +82,13 @@ export default function CheckoutScreen() {
   const [quoteRetry, setQuoteRetry] = useState(0);
   const [routeResponse, setRouteResponse] = useState<DeliveryRouteState | null>(null);
   const [routeFailure, setRouteFailure] = useState<DeliveryRouteFailure | null>(null);
+  const [cartPage, setCartPage] = useState(1);
+  const cartPageCount = Math.max(1, Math.ceil(cart.length / CHECKOUT_ITEMS_PER_PAGE));
+  const currentCartPage = Math.min(cartPage, cartPageCount);
+  const visibleCart = cart.slice(
+    (currentCartPage - 1) * CHECKOUT_ITEMS_PER_PAGE,
+    currentCartPage * CHECKOUT_ITEMS_PER_PAGE,
+  );
   const restaurantId = cart[0]?.food.restaurantId;
   const routeKey = JSON.stringify({
     restaurantId,
@@ -284,13 +294,19 @@ export default function CheckoutScreen() {
           ) : currentRouteError ? (
             <Text style={styles.routeNotice}>{currentRouteError}</Text>
           ) : null}
-          {cart.map(({ food, quantity }) => (
+          {visibleCart.map(({ food, quantity }) => (
             <View style={styles.foodRow} key={food.id}>
               <FoodImage uri={food.image} style={styles.foodImage} />
               <Text style={styles.foodName} numberOfLines={2}>{food.name} <Text style={styles.muted}>× {quantity}</Text></Text>
               <Text style={styles.foodPrice}>{formatCurrency(food.price * quantity)}</Text>
             </View>
           ))}
+          <ListPagination
+            page={currentCartPage}
+            pageSize={CHECKOUT_ITEMS_PER_PAGE}
+            total={cart.length}
+            onPageChange={setCartPage}
+          />
         </Surface>
 
         <Surface style={styles.voucherCard}>
