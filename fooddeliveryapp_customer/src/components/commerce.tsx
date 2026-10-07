@@ -11,7 +11,13 @@ import {
 import { colors } from '@/theme';
 import { AppButton, FoodImage, Price, StatusPill, Surface } from '@/components/ui';
 
-export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
+export function RestaurantCard({
+  restaurant,
+  showDistance = true,
+}: {
+  restaurant: Restaurant;
+  showDistance?: boolean;
+}) {
   return (
     <Pressable
       onPress={() =>
@@ -37,10 +43,10 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
           {restaurant.deliveryMinutes ? (
             <Text style={styles.restaurantMetaText}>{restaurant.deliveryMinutes}</Text>
           ) : null}
-          {restaurant.deliveryMinutes && restaurant.distance ? (
+          {restaurant.deliveryMinutes && showDistance && restaurant.distance ? (
             <Text style={styles.metaDot}>·</Text>
           ) : null}
-          {restaurant.distance ? (
+          {showDistance && restaurant.distance ? (
             <Text style={styles.restaurantMetaText}>{restaurant.distance}</Text>
           ) : null}
           {!restaurant.open ? <Text style={styles.closedText}> · Đã đóng</Text> : null}

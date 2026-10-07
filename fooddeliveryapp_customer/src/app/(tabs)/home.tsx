@@ -22,6 +22,7 @@ export default function HomeScreen() {
     isLoading: isLoadingCustomerData,
   } = usePrototype();
   const selectedAddress = addresses.find((address) => address.id === selectedAddressId);
+  const homeAddress = addresses.find((address) => address.isDefault) ?? selectedAddress;
   const loadHome = useCallback(async () => {
     if (!token) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
@@ -30,15 +31,15 @@ export default function HomeScreen() {
       listCategories(token),
       listRestaurants(token, {
         isOpen: true,
-        ...(selectedAddress
-          ? { latitude: selectedAddress.latitude, longitude: selectedAddress.longitude }
+        ...(homeAddress
+          ? { latitude: homeAddress.latitude, longitude: homeAddress.longitude }
           : {}),
       }),
     ]);
     return { categories, restaurants };
-  }, [selectedAddress, token]);
+  }, [homeAddress, token]);
   const { data, error, isLoading, retry } = useApiResource(loadHome);
-  const addressId = selectedAddressId ?? '';
+  const addressId = homeAddress?.id ?? '';
   const restaurantCount = data?.restaurants.length ?? 0;
   const restaurantPageCount = Math.max(1, Math.ceil(restaurantCount / RESTAURANTS_PER_PAGE));
   const restaurantPage = Math.min(
@@ -63,8 +64,8 @@ export default function HomeScreen() {
             ]}
             accessibilityRole="button"
             accessibilityLabel={
-              selectedAddress
-                ? `Địa chỉ giao hàng: ${selectedAddress.name}, ${selectedAddress.address}. Nhấn để thay đổi.`
+              homeAddress
+                ? `Địa chỉ giao hàng: ${homeAddress.name}, ${homeAddress.address}. Nhấn để thay đổi.`
                 : 'Chọn địa chỉ giao hàng'
             }
           >
@@ -73,11 +74,11 @@ export default function HomeScreen() {
             </View>
             <View style={styles.locationCopy}>
               <Text style={styles.locationName} numberOfLines={1}>
-                {selectedAddress?.name
+                {homeAddress?.name
                   ?? (isLoadingCustomerData ? 'Đang tải địa chỉ...' : 'Chọn địa chỉ giao hàng')}
               </Text>
               <Text style={styles.locationAddress} numberOfLines={1}>
-                {selectedAddress?.address
+                {homeAddress?.address
                   ?? (isLoadingCustomerData
                     ? 'Đang đồng bộ sổ địa chỉ'
                     : 'Thêm địa chỉ để bắt đầu đặt món')}
@@ -146,7 +147,7 @@ export default function HomeScreen() {
         ) : data?.restaurants.length ? (
           <>
             {visibleRestaurants.map((restaurant) => (
-              <RestaurantCard restaurant={restaurant} key={restaurant.id} />
+              <RestaurantCard restaurant={restaurant} key={restaurant.id} showDistance={false} />
             ))}
             <ListPagination
               page={restaurantPage}
