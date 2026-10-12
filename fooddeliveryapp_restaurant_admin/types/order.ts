@@ -1,6 +1,8 @@
 export type OrderStatus =
+  | "SCHEDULED"
   | "PENDING"
   | "CONFIRMED"
+  | "PROCESSING"
   | "PREPARING"
   | "READY_FOR_PICKUP"
   | "PICKED_UP"
@@ -22,8 +24,13 @@ export interface Order {
   orderCode: string;
   status: OrderStatus;
   createdAt: string;
+  scheduledFor?: string | null;
   totalAmount: number;
   note?: string | null;
+  customerName?: string | null;
+  receiverName?: string | null;
+  receiverPhone?: string | null;
+  deliveryAddress?: string | null;
   details: OrderDetail[];
 }
 

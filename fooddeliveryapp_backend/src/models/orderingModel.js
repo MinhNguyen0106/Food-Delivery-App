@@ -1,4 +1,5 @@
 const db = require('../common/db').promise();
+const AppError = require('../services/AppError');
 
 async function execute(connection, sql, params = []) {
   const [result] = await connection.execute(sql, params);
@@ -195,6 +196,55 @@ module.exports = {
     return result.insertId;
   },
 
+  async createScheduledOrder(connection, order) {
+    const parameterNames = [
+      'orderCode',
+      'customerId',
+      'restaurantId',
+      'addressId',
+      'voucherId',
+      'subtotal',
+      'deliveryFee',
+      'discount',
+      'totalAmount',
+      'statusId',
+      'note',
+      'scheduledFor',
+      'scheduledSlotEnd',
+      'scheduledTriggerAt',
+      'scheduledDispatchAt',
+      'prepMinutes',
+      'bufferMinutes',
+      'travelSeconds',
+      'distanceMeters',
+    ];
+    const missingParameters = parameterNames.filter(
+      (name) => order[name] === undefined
+    );
+    if (missingParameters.length) {
+      throw new AppError(
+        `Scheduled order is missing database parameters: ${missingParameters.join(', ')}`,
+        500,
+        'CONFIGURATION_ERROR'
+      );
+    }
+    const [result] = await connection.execute(
+      `INSERT INTO orders
+        (order_code, customer_id, restaurant_id, address_id, voucher_id,
+         subtotal, delivery_fee, discount, total_amount, status_id, note,
+         scheduled_for, scheduled_slot_end, scheduled_trigger_at, scheduled_dispatch_at,
+         scheduled_prep_minutes, scheduled_buffer_minutes,
+         scheduled_travel_seconds, scheduled_distance_meters)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order.orderCode, order.customerId, order.restaurantId, order.addressId,
+        order.voucherId, order.subtotal, order.deliveryFee, order.discount,
+        order.totalAmount, order.statusId, order.note, order.scheduledFor,
+        order.scheduledSlotEnd, order.scheduledTriggerAt, order.scheduledDispatchAt,
+        order.prepMinutes, order.bufferMinutes, order.travelSeconds, order.distanceMeters]
+    );
+    return result.insertId;
+  },
+
   async createOrderDetail(connection, orderId, item) {
     return execute(
       connection,
@@ -238,7 +288,11 @@ module.exports = {
       `SELECT order_record.order_id, order_record.order_code,
         order_record.restaurant_id, restaurant.name AS restaurant_name,
         order_record.address_id, order_record.subtotal, order_record.delivery_fee,
-        order_record.discount, order_record.total_amount, status.status_name AS status,
+        order_record.scheduled_for, order_record.scheduled_slot_end,
+        order_record.scheduled_trigger_at,
+        order_record.estimated_delivery_minutes, order_record.discount,
+        order_record.estimated_delivery_accepted_at,
+        order_record.total_amount, status.status_name AS status,
         order_record.note, order_record.created_at, order_record.updated_at
        FROM orders order_record
        JOIN restaurants restaurant ON restaurant.restaurant_id = order_record.restaurant_id
@@ -257,7 +311,11 @@ module.exports = {
         order_record.address_id, address.address_name, address.receiver_name,
         address.receiver_phone, address.full_address, address.latitude, address.longitude,
         order_record.subtotal, order_record.delivery_fee, order_record.discount,
-        order_record.total_amount, status.status_name AS status, order_record.note,
+        order_record.scheduled_for, order_record.scheduled_slot_end,
+        order_record.scheduled_trigger_at,
+        order_record.estimated_delivery_minutes, order_record.total_amount,
+        order_record.estimated_delivery_accepted_at,
+        status.status_name AS status, order_record.note,
         order_record.created_at, order_record.updated_at
        FROM orders order_record
        JOIN restaurants restaurant ON restaurant.restaurant_id = order_record.restaurant_id
@@ -312,7 +370,10 @@ module.exports = {
       `SELECT order_record.order_id, order_record.order_code,
         order_record.customer_id, order_record.restaurant_id,
         order_record.address_id, order_record.subtotal, order_record.delivery_fee,
-        order_record.discount, order_record.total_amount,
+        order_record.scheduled_for, order_record.scheduled_slot_end,
+        order_record.scheduled_trigger_at,
+        order_record.estimated_delivery_minutes, order_record.discount, order_record.total_amount,
+        order_record.estimated_delivery_accepted_at,
         status.status_name AS status, order_record.note,
         order_record.created_at, order_record.updated_at
        FROM orders order_record
@@ -331,7 +392,11 @@ module.exports = {
         order_record.address_id, address.address_name, address.receiver_name,
         address.receiver_phone, address.full_address, address.latitude, address.longitude,
         order_record.subtotal, order_record.delivery_fee, order_record.discount,
-        order_record.total_amount, status.status_name AS status, order_record.note,
+        order_record.scheduled_for, order_record.scheduled_slot_end,
+        order_record.scheduled_trigger_at,
+        order_record.estimated_delivery_minutes, order_record.total_amount,
+        order_record.estimated_delivery_accepted_at,
+        status.status_name AS status, order_record.note,
         order_record.created_at, order_record.updated_at
        FROM orders order_record
        JOIN addresses address ON address.address_id = order_record.address_id
@@ -371,6 +436,11 @@ module.exports = {
     const [rows] = await connection.execute(
       `SELECT order_record.order_id, order_record.customer_id,
         order_record.restaurant_id, order_record.status_id, order_record.voucher_id,
+        order_record.estimated_delivery_minutes,
+        order_record.scheduled_for,
+        order_record.scheduled_slot_end,
+        order_record.scheduled_trigger_at,
+        order_record.estimated_delivery_accepted_at,
         status.status_name AS status
        FROM orders order_record
        JOIN order_statuses status ON status.status_id = order_record.status_id
@@ -392,6 +462,25 @@ module.exports = {
       [statusId, orderId]
     );
     return result.affectedRows;
+  },
+
+  async proposeDeliveryEstimate(connection, orderId, statusId, minutes) {
+    await connection.execute(
+      `UPDATE orders
+       SET status_id = ?, estimated_delivery_minutes = ?,
+           estimated_delivery_accepted_at = NULL
+       WHERE order_id = ?`,
+      [statusId, minutes, orderId]
+    );
+  },
+
+  async acceptDeliveryEstimate(connection, orderId) {
+    await connection.execute(
+      `UPDATE orders
+       SET estimated_delivery_accepted_at = CURRENT_TIMESTAMP
+       WHERE order_id = ? AND estimated_delivery_accepted_at IS NULL`,
+      [orderId]
+    );
   },
 
   async cancelPendingDelivery(connection, orderId) {

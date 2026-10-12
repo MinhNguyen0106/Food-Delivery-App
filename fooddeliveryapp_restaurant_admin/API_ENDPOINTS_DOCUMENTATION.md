@@ -527,7 +527,6 @@ All address routes are Customer-only and scoped to the authenticated Customer.
       "subtotal": 100,
 
       "deliveryFee": 10,
-
       "discount": 0,
 
       "totalAmount": 110,
@@ -540,10 +539,10 @@ All address routes are Customer-only and scoped to the authenticated Customer.
   ```
 
 - **Server calculations:** food prices, subtotal, distance-based delivery
-
   fee, discount and total are calculated by the backend. Address must belong
-
-  to the Customer. Cart items must be available and from one active/open
+  to the Customer. Current app orders are scheduled by the Customer and automatically
+  move to `PROCESSING` at the system-calculated trigger time. Restaurants no
+  longer propose delivery estimates. Cart items must be available and from one active/open
 
   restaurant. Successful checkout creates the order, order details, pending
 
@@ -563,7 +562,8 @@ All address routes are Customer-only and scoped to the authenticated Customer.
 
 - **Method / endpoint:** `GET /api/orders`
 
-- **Query:** optional `status` from `PENDING`, `CONFIRMED`, `PREPARING`,
+- **Query:** optional `status` from `SCHEDULED`, `PENDING`, `CONFIRMED`,
+  `PROCESSING`, `PREPARING`,
 
   `READY_FOR_PICKUP`, `PICKED_UP`, `DELIVERING`, `COMPLETED`, `CANCELLED`,
 
@@ -599,25 +599,32 @@ All address routes are Customer-only and scoped to the authenticated Customer.
 
 #### Order transitions
 
-All are `POST /api/orders/{id}/<action>` with optional body `{ "note": "..." }`
-
-(string max 255); request body may be empty. Success is `200`,
+All are `POST /api/orders/{id}/<action>` and return `200`,
 
 `{success:true,data:{orderId,previousStatus,status}}`.
+
+Other actions may use an optional `{ "note": "..." }` body. Scheduled orders
+move from `SCHEDULED` to `PROCESSING` automatically; the Restaurant can start
+preparation from there. The estimate actions are retained for existing legacy
+orders only.
 
 | Endpoint | Actor | Allowed source → target |
 
 |---|---|---|
 
-| `POST /api/orders/{id}/confirm` | Owning Restaurant | `PENDING` → `CONFIRMED` |
+| `POST /api/orders/{id}/confirm` (legacy) | Owning Restaurant; requires `{estimated_delivery_minutes}` (positive integer) | Legacy `PENDING` → `CONFIRMED` with a proposed ETA |
+| `POST /api/orders/{id}/accept-estimate` (legacy) | Owning Customer | Accepts a legacy proposed ETA |
 
 | `POST /api/orders/{id}/reject` | Owning Restaurant | `PENDING` → `REJECTED` |
 
-| `POST /api/orders/{id}/prepare` | Owning Restaurant | `CONFIRMED` → `PREPARING` |
+| `POST /api/orders/{id}/prepare` | Owning Restaurant | `PROCESSING`, legacy `CONFIRMED`, or legacy `PENDING` → `PREPARING` |
 
 | `POST /api/orders/{id}/ready-for-pickup` | Owning Restaurant | `PREPARING` → `READY_FOR_PICKUP` |
 
-| `POST /api/orders/{id}/cancel` | Owning Customer | `PENDING` → `CANCELLED` |
+| `POST /api/orders/{id}/cancel` | Owning Customer | Cancels `SCHEDULED` or legacy `PENDING`; legacy estimate rules still apply to `CONFIRMED` |
+
+At `READY_FOR_PICKUP`, the Restaurant's order card offers **In đơn** and
+opens the browser's print dialog.
 
 Each transition checks ownership and current state and writes status history in
 

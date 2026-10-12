@@ -2,6 +2,40 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const model = require('../src/models/orderingModel');
 const orderService = require('../src/services/orderService');
+const orderingValidator = require('../src/validators/orderingValidator');
+
+test('delivery estimate is collected by the Restaurant, not during checkout', () => {
+  let validationError;
+  orderingValidator.checkout(
+    { body: { address_id: 1 } },
+    {},
+    (error) => { validationError = error; }
+  );
+  assert.equal(validationError, undefined);
+
+  orderingValidator.estimateProposal(
+    { body: {} },
+    {},
+    (error) => { validationError = error; }
+  );
+  assert.ok(validationError);
+
+  validationError = undefined;
+  orderingValidator.estimateProposal(
+    { body: { estimated_delivery_minutes: 0 } },
+    {},
+    (error) => { validationError = error; }
+  );
+  assert.ok(validationError);
+
+  validationError = undefined;
+  orderingValidator.estimateProposal(
+    { body: { estimated_delivery_minutes: 25 } },
+    {},
+    (error) => { validationError = error; }
+  );
+  assert.equal(validationError, undefined);
+});
 
 test('checkout clears the cart from the validated checkout context after creating the order', async () => {
   const methodNames = [
@@ -34,6 +68,7 @@ test('checkout clears the cart from the validated checkout context after creatin
     longitude: 105,
     note: null,
   });
+
   model.getCheckoutItems = async () => [{
     food_id: 5,
     restaurant_id: 12,
@@ -68,6 +103,10 @@ test('checkout clears the cart from the validated checkout context after creatin
     );
     assert.equal(result.orderId, 91);
     assert.deepEqual(calls.find(([name]) => name === 'clearCart'), ['clearCart', 73]);
+    assert.equal(
+      Object.hasOwn(calls.find(([name]) => name === 'createOrder')[1], 'estimatedDeliveryMinutes'),
+      false
+    );
   } finally {
     model.pool.getConnection = originalGetConnection;
     for (const name of methodNames) model[name] = originals[name];

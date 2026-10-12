@@ -268,6 +268,8 @@ CREATE TABLE orders (
     voucher_id INT NULL,
     subtotal DECIMAL(12,2) NOT NULL,
     delivery_fee DECIMAL(12,2) NOT NULL DEFAULT 0,
+    estimated_delivery_minutes INT NULL,
+    estimated_delivery_accepted_at DATETIME NULL,
     discount DECIMAL(12,2) NOT NULL DEFAULT 0,
     total_amount DECIMAL(12,2) NOT NULL,
     status_id INT NOT NULL,
@@ -277,6 +279,9 @@ CREATE TABLE orders (
         ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT chk_order_subtotal CHECK (subtotal >= 0),
     CONSTRAINT chk_order_delivery_fee CHECK (delivery_fee >= 0),
+    CONSTRAINT chk_order_estimated_delivery_minutes CHECK (
+        estimated_delivery_minutes IS NULL OR estimated_delivery_minutes > 0
+    ),
     CONSTRAINT chk_order_discount CHECK (discount >= 0),
     CONSTRAINT chk_order_total CHECK (total_amount >= 0),
     CONSTRAINT fk_orders_customer

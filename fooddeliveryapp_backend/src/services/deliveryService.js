@@ -187,7 +187,11 @@ module.exports = {
         throw new AppError('Delivery is no longer available', 409, 'DELIVERY_UNAVAILABLE');
       }
       const order = await model.lockOrder(connection, delivery.order_id);
-      if (!order || order.status !== 'READY_FOR_PICKUP') {
+      const scheduledDispatchReady =
+        order &&
+        ['PROCESSING', 'PREPARING'].includes(order.status) &&
+        Number(order.scheduled_dispatch_due) === 1;
+      if (!order || (order.status !== 'READY_FOR_PICKUP' && !scheduledDispatchReady)) {
         throw new AppError('Delivery requires an Order that is ready for pickup', 409, 'INVALID_TRANSITION');
       }
       const accepted = await model.updateDeliveryAssignment(connection, deliveryId, shipperId);

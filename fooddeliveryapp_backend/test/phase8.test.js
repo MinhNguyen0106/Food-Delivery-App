@@ -135,6 +135,8 @@ test('OpenAPI documents Phase 8 endpoints and has no fictitious Admin report rou
     '/api/admin/shippers/{id}/account-status',
     '/api/admin/orders/{id}',
     '/api/orders/quote',
+    '/api/v1/delivery/available-slots',
+    '/api/v1/orders/schedule',
     '/api/deliveries/history',
     '/api/restaurants/me',
     '/api/reports/admin/summary',
@@ -151,6 +153,7 @@ test('OpenAPI documents Phase 8 endpoints and has no fictitious Admin report rou
   assert.ok(swagger.paths['/api/carts'].get);
   assert.ok(swagger.paths['/api/carts'].delete);
   assert.deepEqual(swagger.paths['/api/auth/register'].post.security, []);
+  assert.ok(swagger.paths['/api/v1/orders/schedule'].post);
 });
 
 test('HTTP smoke: application starts, serves Swagger, and protects Admin routes', async (t) => {
@@ -210,18 +213,19 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
     server.once('error', reject);
   });
   const address = server.address();
-  const fetch = (path, token) => new Promise((resolve, reject) => {
-    http.get({
+  const fetch = (path, token, method = 'GET') => new Promise((resolve, reject) => {
+    http.request({
       host: '127.0.0.1',
       port: address.port,
       path,
+      method,
       headers: token ? { authorization: `Bearer ${token}` } : {},
     }, (response) => {
       let body = '';
       response.setEncoding('utf8');
       response.on('data', (chunk) => { body += chunk; });
       response.on('end', () => resolve({ status: response.statusCode, body }));
-    }).on('error', reject);
+    }).on('error', reject).end();
   });
 
   const docs = await fetch('/api-docs/');
@@ -273,6 +277,14 @@ test('HTTP smoke: application starts, serves Swagger, and protects Admin routes'
   assert.equal(unauthorized.error, 'UNAUTHENTICATED');
   const restaurantProfileUnauthenticated = await fetch('/api/restaurants/me');
   assert.equal(restaurantProfileUnauthenticated.status, 401);
+  const scheduledSlotsUnauthenticated = await fetch(
+    '/api/v1/delivery/available-slots?address_id=1&date=2026-10-12'
+  );
+  assert.equal(scheduledSlotsUnauthenticated.status, 401);
+  const scheduledOrderUnauthenticated = await fetch(
+    '/api/v1/orders/schedule', undefined, 'POST'
+  );
+  assert.equal(scheduledOrderUnauthenticated.status, 401);
 
   const customerToken = jwt.sign(
     { role: 'CUSTOMER' },

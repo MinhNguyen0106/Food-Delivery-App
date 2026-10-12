@@ -1,10 +1,16 @@
 const { randomBytes } = require('crypto');
 const AppError = require('./AppError');
-const { deliveryFeePerKm } = require('../config/env');
+const {
+  deliveryFeePerKm,
+} = require('../config/env');
 const model = require('../models/orderingModel');
 const voucherModel = require('../models/voucherModel');
 const voucherService = require('./voucherService');
 const { toCents, fromCents } = require('../common/money');
+const routingService = require('./routingService');
+const deliveryEstimateService = require('./deliveryEstimateService');
+const SCHEDULED_DELIVERY_ERROR =
+  'Khoảng cách quá xa hoặc thời gian quá gấp, không thể đảm bảo giao đúng giờ.';
 const workflow = {
   confirm: { actor: 'RESTAURANT', from: 'PENDING', to: 'CONFIRMED' },
   reject: { actor: 'RESTAURANT', from: 'PENDING', to: 'REJECTED' },
@@ -30,6 +36,14 @@ function positiveId(value, field) {
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 1) {
     throw new AppError(`${field} must be a positive integer`, 400, 'VALIDATION_ERROR');
+  }
+  return number;
+}
+
+function positiveInteger(value, field) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1 || number > 2147483647) {
+    throw new AppError(`${field} must be a positive 32-bit integer`, 400, 'VALIDATION_ERROR');
   }
   return number;
 }
@@ -60,9 +74,12 @@ function validateQuantity(value) {
   return quantity;
 }
 
-async function transaction(work) {
+async function transaction(work, isolationLevel) {
   const connection = await model.pool.getConnection();
   try {
+    if (isolationLevel === 'READ COMMITTED') {
+      await connection.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
+    }
     await connection.beginTransaction();
     const result = await work(connection);
     await connection.commit();
@@ -105,7 +122,7 @@ function verifySingleRestaurant(items, restaurantId) {
   for (const item of items) requireAvailableFood(item);
 }
 
-async function getCheckoutContext(connection, customerId, addressId) {
+async function getCheckoutContext(connection, customerId, addressId, allowClosed = false) {
   const cart = await model.lockCart(connection, customerId);
   if (!cart) throw new AppError('Cart is empty', 409, 'EMPTY_CART');
   const address = await model.getAddress(connection, addressId, customerId);
@@ -116,7 +133,7 @@ async function getCheckoutContext(connection, customerId, addressId) {
   if (!restaurant || restaurant.status !== 'ACTIVE') {
     throw new AppError('Restaurant is not active', 409, 'RESTAURANT_UNAVAILABLE');
   }
-  if (Number(restaurant.is_open) !== 1) {
+  if (!allowClosed && Number(restaurant.is_open) !== 1) {
     throw new AppError('Restaurant is currently closed', 409, 'RESTAURANT_CLOSED');
   }
   const subtotalCents = items.reduce(
@@ -125,6 +142,237 @@ async function getCheckoutContext(connection, customerId, addressId) {
   );
   const deliveryFeeAmount = fromCents(calculateDeliveryFee(restaurant, address) * 100);
   return { cart, address, items, restaurant, subtotalCents, deliveryFeeAmount };
+}
+
+async function createOrderFromContext(connection, context, input, actor, scheduled = null) {
+  const customerId = requireCustomer(actor);
+  const amountBeforeDiscountCents =
+    context.subtotalCents + toCents(context.deliveryFeeAmount, 'Delivery fee');
+  const voucher = input.voucher_code
+    ? await voucherService.applyForCheckout(
+      connection,
+      input.voucher_code.trim(),
+      context.subtotalCents,
+      amountBeforeDiscountCents,
+      customerId
+    )
+    : null;
+  const discountCents = voucher ? voucher.discountCents : 0;
+  const totalCents = amountBeforeDiscountCents - discountCents;
+  const subtotal = fromCents(context.subtotalCents);
+  const totalAmount = fromCents(totalCents);
+  const discountAmount = fromCents(discountCents);
+  const orderStatusId = await model.getLookupId(
+    connection, 'order_statuses', 'status_name', scheduled ? 'SCHEDULED' : 'PENDING'
+  );
+  const paymentMethodId = await model.getLookupId(
+    connection, 'payment_methods', 'method_name', 'COD'
+  );
+  const paymentStatusId = await model.getLookupId(
+    connection, 'payment_statuses', 'status_name', 'PENDING'
+  );
+  if (!orderStatusId || !paymentMethodId || !paymentStatusId) {
+    throw new AppError('Required order or COD lookup configuration is missing', 500, 'CONFIGURATION_ERROR');
+  }
+
+  const orderCode = makeOrderCode();
+  const orderInput = {
+    orderCode,
+    customerId,
+    restaurantId: context.restaurant.restaurant_id,
+    addressId: context.address.address_id,
+    voucherId: voucher ? voucher.voucherId : null,
+    subtotal,
+    deliveryFee: context.deliveryFeeAmount,
+    discount: discountAmount,
+    totalAmount,
+    statusId: orderStatusId,
+    note: input.note ?? context.address.note ?? null,
+  };
+  const orderId = scheduled
+    ? await model.createScheduledOrder(connection, {
+      ...orderInput,
+      scheduledFor: scheduled.scheduledFor,
+      scheduledSlotEnd: scheduled.scheduledSlotEnd,
+      scheduledTriggerAt: scheduled.scheduledTriggerAt,
+      scheduledDispatchAt: scheduled.scheduledDispatchAt,
+      prepMinutes: scheduled.prepMinutes,
+      bufferMinutes: scheduled.bufferMinutes,
+      travelSeconds: scheduled.travelSeconds,
+      distanceMeters: scheduled.distanceMeters,
+    })
+    : await model.createOrder(connection, orderInput);
+
+  for (const item of context.items) {
+    const unitPriceCents = toCents(item.price, 'Food price');
+    await model.createOrderDetail(connection, orderId, {
+      foodId: item.food_id,
+      quantity: validateQuantity(item.quantity),
+      unitPrice: fromCents(unitPriceCents),
+      subtotal: fromCents(unitPriceCents * Number(item.quantity)),
+    });
+  }
+  await model.createPayment(connection, orderId, paymentMethodId, paymentStatusId, totalAmount);
+  if (!scheduled) await model.createDelivery(connection, orderId);
+  await model.createOrderHistory(
+    connection,
+    orderId,
+    orderStatusId,
+    actor.userId,
+    scheduled ? 'Customer created scheduled order' : 'Customer created order'
+  );
+  await model.clearCart(connection, context.cart.cart_id);
+  return {
+    orderId,
+    orderCode,
+    subtotal,
+    deliveryFee: context.deliveryFeeAmount,
+    discount: discountAmount,
+    totalAmount,
+    paymentMethod: 'COD',
+    voucherCode: voucher ? voucher.code : null,
+    ...(scheduled ? {
+      status: 'SCHEDULED',
+      scheduledFor: scheduled.scheduledFor,
+      scheduledSlotEnd: scheduled.scheduledSlotEnd,
+      scheduledTriggerAt: scheduled.scheduledTriggerAt,
+      scheduledDispatchAt: scheduled.scheduledDispatchAt,
+      travelMinutes: Math.ceil(scheduled.travelSeconds / 60),
+    } : {}),
+  };
+}
+
+function validateScheduleDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AppError('date must use YYYY-MM-DD format', 400, 'VALIDATION_ERROR');
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new AppError('date must be a valid calendar date', 400, 'VALIDATION_ERROR');
+  }
+  return value;
+}
+
+async function getRouteEstimate(context) {
+  const route = await routingService.getDrivingEstimate(
+    context.restaurant,
+    context.address
+  );
+  deliveryEstimateService.assertWithinDeliveryRange(route.distanceMeters);
+  return {
+    ...route,
+    travelSeconds: deliveryEstimateService.calculateTravelSeconds(route.distanceMeters),
+    averageSpeedKmh: deliveryEstimateService.averageSpeedKmh,
+  };
+}
+
+async function querySlots(connection, context, date, route) {
+  const [rows] = await connection.execute(
+    `SELECT slot.slot_id, slot.start_time, slot.end_time,
+        COALESCE(capacity.capacity, 4) AS capacity,
+        COALESCE(capacity.prep_minutes, 20) AS prep_minutes,
+        COALESCE(capacity.buffer_minutes, 5) AS buffer_minutes,
+        (
+          SELECT COUNT(*)
+          FROM orders scheduled_order
+          JOIN order_statuses scheduled_status
+            ON scheduled_status.status_id = scheduled_order.status_id
+          WHERE scheduled_order.restaurant_id = restaurant.restaurant_id
+            AND scheduled_order.scheduled_for = TIMESTAMP(?, slot.start_time)
+            AND scheduled_status.status_name NOT IN ('CANCELLED', 'REJECTED')
+        ) AS booked,
+        TIMESTAMPDIFF(
+          SECOND, CURRENT_TIMESTAMP, TIMESTAMP(?, slot.start_time)
+        ) AS lead_seconds,
+        TIMESTAMPDIFF(
+          SECOND,
+          CASE
+            WHEN restaurant.opening_time <= restaurant.closing_time
+              THEN TIMESTAMP(?, restaurant.opening_time)
+            WHEN slot.start_time >= restaurant.opening_time
+              THEN TIMESTAMP(?, restaurant.opening_time)
+            ELSE TIMESTAMP(
+              DATE_SUB(?, INTERVAL 1 DAY), restaurant.opening_time
+            )
+          END,
+          DATE_SUB(
+            TIMESTAMP(?, slot.start_time),
+            INTERVAL (
+              COALESCE(capacity.prep_minutes, 20) * 60 + ? +
+              COALESCE(capacity.buffer_minutes, 5) * 60
+            ) SECOND
+          )
+        ) AS trigger_after_open_seconds
+     FROM time_slots slot
+     JOIN restaurants restaurant ON restaurant.restaurant_id = ?
+     LEFT JOIN restaurant_capacities capacity
+       ON capacity.restaurant_id = restaurant.restaurant_id
+      AND capacity.slot_id = slot.slot_id
+     WHERE restaurant.opening_time IS NOT NULL
+       AND restaurant.closing_time IS NOT NULL
+       AND (
+         (
+           restaurant.opening_time <= restaurant.closing_time
+           AND slot.start_time >= restaurant.opening_time
+           AND slot.end_time <= restaurant.closing_time
+         )
+         OR (
+           restaurant.opening_time > restaurant.closing_time
+           AND (
+             slot.start_time >= restaurant.opening_time
+             OR slot.end_time <= restaurant.closing_time
+           )
+         )
+       )
+     ORDER BY slot.start_time`,
+    [date, date, date, date, date, date, route.travelSeconds,
+      context.restaurant.restaurant_id]
+  );
+
+  return rows.flatMap((row) => {
+    const prepMinutes = Number(row.prep_minutes);
+    const bufferMinutes = Number(row.buffer_minutes);
+    const requiredSeconds = prepMinutes * 60 + route.travelSeconds + bufferMinutes * 60;
+    if (
+      Number(row.booked) >= Number(row.capacity) ||
+      Number(row.lead_seconds) < requiredSeconds ||
+      Number(row.trigger_after_open_seconds) < 0
+    ) {
+      return [];
+    }
+    const endDate = row.end_time === '24:00:00'
+      ? addDays(date, 1)
+      : date;
+    const endTime = row.end_time === '24:00:00' ? '00:00:00' : row.end_time;
+    return [{
+      slotId: Number(row.slot_id),
+      start: `${date} ${row.start_time}`,
+      end: `${endDate} ${endTime}`,
+      capacity: Number(row.capacity),
+      booked: Number(row.booked),
+      prepMinutes,
+      bufferMinutes,
+      travelMinutes: Math.ceil(route.travelSeconds / 60),
+      distanceMeters: route.distanceMeters,
+      requiredLeadMinutes: Math.ceil(requiredSeconds / 60),
+      requiredLeadSeconds: requiredSeconds,
+    }];
+  });
+}
+
+function addDays(dateValue, dayCount) {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + dayCount));
+  return [
+    result.getUTCFullYear(),
+    String(result.getUTCMonth() + 1).padStart(2, '0'),
+    String(result.getUTCDate()).padStart(2, '0'),
+  ].join('-');
 }
 
 module.exports = {
@@ -263,75 +511,90 @@ module.exports = {
     const addressId = positiveId(input.address_id, 'address_id');
     return transaction(async (connection) => {
       const context = await getCheckoutContext(connection, customerId, addressId);
-      const amountBeforeDiscountCents =
-        context.subtotalCents + toCents(context.deliveryFeeAmount, 'Delivery fee');
-      const voucher = input.voucher_code
-        ? await voucherService.applyForCheckout(
-          connection,
-          input.voucher_code.trim(),
-          context.subtotalCents,
-          amountBeforeDiscountCents,
-          customerId
-        )
-        : null;
-      const discountCents = voucher ? voucher.discountCents : 0;
-      const totalCents = amountBeforeDiscountCents - discountCents;
-      const subtotal = fromCents(context.subtotalCents);
-      const totalAmount = fromCents(totalCents);
-      const deliveryFeeAmount = context.deliveryFeeAmount;
-      const discountAmount = fromCents(discountCents);
-      const orderStatusId = await model.getLookupId(
-        connection, 'order_statuses', 'status_name', 'PENDING'
-      );
-      const paymentMethodId = await model.getLookupId(
-        connection, 'payment_methods', 'method_name', 'COD'
-      );
-      const paymentStatusId = await model.getLookupId(
-        connection, 'payment_statuses', 'status_name', 'PENDING'
-      );
-      if (!orderStatusId || !paymentMethodId || !paymentStatusId) {
-        throw new AppError('Required order or COD lookup configuration is missing', 500, 'CONFIGURATION_ERROR');
-      }
-      const orderCode = makeOrderCode();
-      const orderId = await model.createOrder(connection, {
-        orderCode,
-        customerId,
-        restaurantId: context.restaurant.restaurant_id,
-        addressId,
-        voucherId: voucher ? voucher.voucherId : null,
-        subtotal,
-        deliveryFee: deliveryFeeAmount,
-        discount: discountAmount,
-        totalAmount,
-        statusId: orderStatusId,
-        note: input.note ?? context.address.note ?? null,
-      });
-      for (const item of context.items) {
-        const unitPriceCents = toCents(item.price, 'Food price');
-        await model.createOrderDetail(connection, orderId, {
-          foodId: item.food_id,
-          quantity: validateQuantity(item.quantity),
-          unitPrice: fromCents(unitPriceCents),
-          subtotal: fromCents(unitPriceCents * Number(item.quantity)),
-        });
-      }
-      await model.createPayment(connection, orderId, paymentMethodId, paymentStatusId, totalAmount);
-      await model.createDelivery(connection, orderId);
-      await model.createOrderHistory(
-        connection, orderId, orderStatusId, actor.userId, 'Customer created order'
-      );
-      await model.clearCart(connection, context.cart.cart_id);
-      return {
-        orderId,
-        orderCode,
-        subtotal,
-        deliveryFee: deliveryFeeAmount,
-        discount: discountAmount,
-        totalAmount,
-        paymentMethod: 'COD',
-        voucherCode: voucher ? voucher.code : null,
-      };
+      return createOrderFromContext(connection, context, input, actor);
     });
+  },
+
+  async availableScheduledSlots(input, actor) {
+    const customerId = requireCustomer(actor);
+    const addressId = positiveId(input.address_id, 'address_id');
+    const date = validateScheduleDate(input.date);
+    const context = await transaction((connection) =>
+      getCheckoutContext(connection, customerId, addressId, true)
+    );
+    const route = await getRouteEstimate(context);
+    const slots = await querySlots(model.pool, context, date, route);
+    return {
+      date,
+      distanceMeters: route.distanceMeters,
+      travelMinutes: Math.ceil(route.travelSeconds / 60),
+      averageSpeedKmh: route.averageSpeedKmh,
+      slots,
+    };
+  },
+
+  async scheduleOrder(input, actor) {
+    const customerId = requireCustomer(actor);
+    const addressId = positiveId(input.address_id, 'address_id');
+    const slotId = positiveId(input.slot_id, 'slot_id');
+    const date = validateScheduleDate(input.date);
+    const initialContext = await transaction((connection) =>
+      getCheckoutContext(connection, customerId, addressId, true)
+    );
+    const route = await getRouteEstimate(initialContext);
+
+    return transaction(async (connection) => {
+      const context = await getCheckoutContext(connection, customerId, addressId, true);
+      if (
+        Number(context.restaurant.restaurant_id) !== Number(initialContext.restaurant.restaurant_id) ||
+        Number(context.restaurant.latitude) !== Number(initialContext.restaurant.latitude) ||
+        Number(context.restaurant.longitude) !== Number(initialContext.restaurant.longitude) ||
+        Number(context.address.latitude) !== Number(initialContext.address.latitude) ||
+        Number(context.address.longitude) !== Number(initialContext.address.longitude)
+      ) {
+        throw new AppError(
+          'Restaurant or delivery coordinates changed; refresh available delivery slots',
+          409,
+          'SLOT_UNAVAILABLE'
+        );
+      }
+      const slots = await querySlots(connection, context, date, route);
+      const selected = slots.find((slot) => slot.slotId === slotId);
+      if (!selected) {
+        throw new AppError(SCHEDULED_DELIVERY_ERROR, 400, 'SCHEDULED_DELIVERY_UNAVAILABLE');
+      }
+      const start = selected.start;
+      const end = selected.end;
+      const [clockRows] = await connection.execute(
+        `SELECT TIMESTAMPDIFF(SECOND, CURRENT_TIMESTAMP, ?) AS lead_seconds,
+          DATE_FORMAT(DATE_SUB(?, INTERVAL ? SECOND), '%Y-%m-%d %H:%i:%s') AS trigger_at,
+          DATE_FORMAT(
+            GREATEST(
+              DATE_SUB(?, INTERVAL (? + 600) SECOND),
+              DATE_SUB(?, INTERVAL ? SECOND)
+            ),
+            '%Y-%m-%d %H:%i:%s'
+          ) AS dispatch_at`,
+        [start, start, selected.requiredLeadSeconds, start,
+          route.travelSeconds, start, selected.requiredLeadSeconds]
+      );
+      if (!clockRows[0] || Number(clockRows[0].lead_seconds) < selected.requiredLeadSeconds) {
+        throw new AppError(SCHEDULED_DELIVERY_ERROR, 400, 'SCHEDULED_DELIVERY_UNAVAILABLE');
+      }
+
+      const scheduled = {
+        scheduledFor: start,
+        scheduledSlotEnd: end,
+        scheduledTriggerAt: clockRows[0].trigger_at,
+        scheduledDispatchAt: clockRows[0].dispatch_at,
+        prepMinutes: selected.prepMinutes,
+        bufferMinutes: selected.bufferMinutes,
+        travelSeconds: route.travelSeconds,
+        distanceMeters: route.distanceMeters,
+      };
+      const order = await createOrderFromContext(connection, context, input, actor, scheduled);
+      return order;
+    }, 'READ COMMITTED');
   },
 
   async listOrders(actor, statusName) {
@@ -373,7 +636,13 @@ module.exports = {
     return order.history;
   },
 
-  async transitionOrder(orderIdValue, action, note, actor) {
+  async transitionOrder(
+    orderIdValue,
+    action,
+    note,
+    actor,
+    estimatedDeliveryMinutes
+  ) {
     const orderId = positiveId(orderIdValue, 'id');
     const transition = workflow[action];
     if (!transition) {
@@ -388,6 +657,9 @@ module.exports = {
     if (transition.actor === 'RESTAURANT' && (!Number.isSafeInteger(actorId) || actorId < 1)) {
       throw new AppError('Restaurant account is not linked to a restaurant', 403, 'FORBIDDEN');
     }
+    const estimate = action === 'confirm'
+      ? positiveInteger(estimatedDeliveryMinutes, 'estimated_delivery_minutes')
+      : null;
     return transaction(async (connection) => {
       const order = await model.lockOrderForTransition(connection, orderId);
       if (
@@ -397,18 +669,46 @@ module.exports = {
       ) {
         throw new AppError('Order not found', 404, 'NOT_FOUND');
       }
-      if (order.status !== transition.from) {
+      const canCancelUnacceptedEstimate =
+        action === 'cancel' &&
+        order.status === 'CONFIRMED' &&
+        !order.estimated_delivery_accepted_at;
+      const canCancelScheduled = action === 'cancel' && order.status === 'SCHEDULED';
+      const canRejectScheduled = action === 'reject' && order.status === 'SCHEDULED';
+      const canPrepareScheduled =
+        action === 'prepare' &&
+        ['SCHEDULED', 'PROCESSING'].includes(order.status);
+      const canPreparePending = action === 'prepare' && order.status === 'PENDING';
+      if (
+        order.status !== transition.from &&
+        !canCancelUnacceptedEstimate &&
+        !canCancelScheduled &&
+        !canRejectScheduled &&
+        !canPrepareScheduled &&
+        !canPreparePending
+      ) {
         throw new AppError(
           `Order in ${order.status} cannot transition to ${transition.to}`,
           409,
           'INVALID_TRANSITION'
         );
       }
+      if (canRejectScheduled && (typeof note !== 'string' || !note.trim())) {
+        throw new AppError(
+          'A reason is required to reject a scheduled order',
+          400,
+          'REJECTION_REASON_REQUIRED'
+        );
+      }
       const statusId = await model.getOrderStatusId(connection, transition.to);
       if (!statusId) {
         throw new AppError('Required order status configuration is missing', 500, 'CONFIGURATION_ERROR');
       }
-      await model.updateOrderStatus(connection, orderId, statusId);
+      if (action === 'confirm') {
+        await model.proposeDeliveryEstimate(connection, orderId, statusId, estimate);
+      } else {
+        await model.updateOrderStatus(connection, orderId, statusId);
+      }
       if (transition.to === 'CANCELLED' || transition.to === 'REJECTED') {
         await model.cancelPendingDelivery(connection, orderId);
         if (order.voucher_id !== null && order.voucher_id !== undefined) {
@@ -426,12 +726,55 @@ module.exports = {
         orderId,
         statusId,
         actor.userId,
-        note || `Order ${transition.to.toLowerCase().replace(/_/g, ' ')}`
+        note || (
+          canCancelUnacceptedEstimate
+            ? 'Customer rejected the delivery estimate'
+            : `Order ${transition.to.toLowerCase().replace(/_/g, ' ')}`
+        )
       );
       return {
         orderId,
         previousStatus: order.status,
         status: transition.to,
+      };
+    });
+  },
+
+  async acceptDeliveryEstimate(orderIdValue, actor) {
+    const orderId = positiveId(orderIdValue, 'id');
+    const customerId = requireCustomer(actor);
+    return transaction(async (connection) => {
+      const order = await model.lockOrderForTransition(connection, orderId);
+      if (!order || Number(order.customer_id) !== customerId) {
+        throw new AppError('Order not found', 404, 'NOT_FOUND');
+      }
+      if (
+        order.status !== 'CONFIRMED' ||
+        !order.estimated_delivery_minutes ||
+        order.estimated_delivery_accepted_at
+      ) {
+        throw new AppError(
+          'There is no delivery estimate awaiting your response',
+          409,
+          'INVALID_ESTIMATE_RESPONSE'
+        );
+      }
+      await model.acceptDeliveryEstimate(connection, orderId);
+      const statusId = await model.getOrderStatusId(connection, 'CONFIRMED');
+      if (!statusId) {
+        throw new AppError('Required order status configuration is missing', 500, 'CONFIGURATION_ERROR');
+      }
+      await model.createOrderHistory(
+        connection,
+        orderId,
+        statusId,
+        actor.userId,
+        `Customer accepted the ${order.estimated_delivery_minutes}-minute delivery estimate`
+      );
+      return {
+        orderId,
+        estimatedDeliveryMinutes: Number(order.estimated_delivery_minutes),
+        estimatedDeliveryAccepted: true,
       };
     });
   },

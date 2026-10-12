@@ -7,12 +7,33 @@ import { reportService } from "@/services/report.service";
 import type { Order } from "@/types/order";
 
 type GroupBy = "day" | "week" | "month";
+type CurrentPeriod = "today" | "week" | "month";
 
 function localDateString(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function currentPeriodRange(groupBy: GroupBy, current = new Date()) {
+  const start = new Date(current.getFullYear(), current.getMonth(), current.getDate());
+  const end = new Date(start);
+
+  if (groupBy === "week") {
+    const daysSinceMonday = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - daysSinceMonday);
+    end.setDate(start.getDate() + 6);
+  } else if (groupBy === "month") {
+    start.setDate(1);
+    end.setMonth(start.getMonth() + 1, 0);
+  }
+
+  return { from: localDateString(start), to: localDateString(end) };
+}
+
+function getCurrentPeriod(groupBy: GroupBy): CurrentPeriod {
+  return groupBy === "day" ? "today" : groupBy;
 }
 
 function formatMoney(value: number | string) {
@@ -27,10 +48,11 @@ export default function DashboardPage() {
   const [today, setToday] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [reportFrom, setReportFrom] = useState("");
+  const [reportTo, setReportTo] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("day");
   const [orders, setOrders] = useState<Order[]>([]);
   const [revenue, setRevenue] = useState<{ period: string; revenue: number | string; completed_orders: number }[]>([]);
-  const [todayRevenue, setTodayRevenue] = useState<number | string>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestId = useRef(0);
@@ -38,10 +60,12 @@ export default function DashboardPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const current = new Date();
-      setToday(localDateString(current));
-      setTo(localDateString(current));
-      current.setDate(current.getDate() - 6);
-      setFrom(localDateString(current));
+      const currentDate = localDateString(current);
+      setToday(currentDate);
+      setFrom(currentDate);
+      setTo(currentDate);
+      setReportFrom(currentDate);
+      setReportTo(currentDate);
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -51,15 +75,17 @@ export default function DashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [orderList, revenueRows, todayRows] = await Promise.all([
+      const [orderList, revenueRows] = await Promise.all([
         orderService.list(),
-        reportService.getRestaurantRevenue({ from, to, groupBy }),
-        reportService.getRestaurantRevenue({ from: today, to: today, groupBy: "day" }),
+        reportService.getRestaurantRevenue({
+          from: reportFrom,
+          to: reportTo,
+          groupBy,
+        }),
       ]);
       if (requestId.current !== currentRequest) return;
       setOrders(orderList);
       setRevenue(revenueRows);
-      setTodayRevenue(todayRows.find((row) => row.period === today)?.revenue ?? 0);
     } catch (cause) {
       if (requestId.current === currentRequest) {
         setError(cause instanceof Error ? cause.message : "Không thể tải dữ liệu.");
@@ -67,10 +93,10 @@ export default function DashboardPage() {
     } finally {
       if (requestId.current === currentRequest) setLoading(false);
     }
-  }, [from, to, groupBy, today]);
+  }, [reportFrom, reportTo, groupBy]);
 
   useEffect(() => {
-    if (!today || !from || !to) return;
+    if (!today || !reportFrom || !reportTo) return;
     const timer = window.setTimeout(() => {
       void loadDashboard();
     }, 0);
@@ -78,22 +104,47 @@ export default function DashboardPage() {
       requestId.current += 1;
       window.clearTimeout(timer);
     };
-  }, [loadDashboard, today, from, to]);
+  }, [loadDashboard, today, reportFrom, reportTo]);
 
   const metrics = useMemo(() => {
     const rangeOrders = orders.filter((order) => {
       const date = order.createdAt.slice(0, 10);
-      return date >= from && date <= to;
+      return date >= reportFrom && date <= reportTo;
     });
+    const rangeRevenue = revenue.reduce(
+      (total, row) => total + Number(row.revenue),
+      0,
+    );
+    const revenueLabel = reportFrom === today && reportTo === today
+      ? "Doanh thu hôm nay"
+      : reportFrom === reportTo
+        ? "Doanh thu ngày đã chọn"
+        : "Doanh thu trong kỳ";
     return [
-      ["Doanh thu hôm nay", formatMoney(todayRevenue)],
+      [revenueLabel, formatMoney(rangeRevenue)],
       ["Đơn trong kỳ", new Intl.NumberFormat("vi-VN").format(rangeOrders.length)],
       ["Đơn chờ xác nhận", new Intl.NumberFormat("vi-VN").format(rangeOrders.filter((order) => order.status === "PENDING").length)],
       ["Đơn hoàn thành trong kỳ", new Intl.NumberFormat("vi-VN").format(revenue.reduce((total, row) => total + row.completed_orders, 0))],
     ];
-  }, [orders, from, to, revenue, todayRevenue]);
+  }, [orders, reportFrom, reportTo, revenue, today]);
   const maxRevenue = Math.max(1, ...revenue.map((row) => Number(row.revenue)));
   const invalidRange = from > to;
+
+  function showCurrentPeriod(period: CurrentPeriod) {
+    const range = currentPeriodRange(period === "today" ? "day" : period);
+    setGroupBy(period === "today" ? "day" : period);
+    setFrom(range.from);
+    setTo(range.to);
+    setReportFrom(range.from);
+    setReportTo(range.to);
+  }
+
+  function applyDateRange() {
+    if (!from || !to || from > to) return;
+    setGroupBy("day");
+    setReportFrom(from);
+    setReportTo(to);
+  }
 
   return (
     <section>
@@ -111,20 +162,64 @@ export default function DashboardPage() {
       {error && (
         <p role="alert" className="mb-5 rounded-xl bg-red-50 p-4 text-sm text-red-700">Không thể tải dữ liệu: {error}</p>
       )}
-      <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-        <label className="text-xs font-semibold text-slate-600">Từ ngày
-          <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} className="mt-1 block h-10 rounded-lg border border-slate-300 px-3 text-sm font-normal" />
-        </label>
-        <label className="text-xs font-semibold text-slate-600">Đến ngày
-          <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} className="mt-1 block h-10 rounded-lg border border-slate-300 px-3 text-sm font-normal" />
-        </label>
-        <label className="text-xs font-semibold text-slate-600">Gom nhóm
-          <select value={groupBy} onChange={(event) => setGroupBy(event.target.value as GroupBy)} className="mt-1 block h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal">
-            <option value="day">Theo ngày</option>
-            <option value="week">Theo tuần</option>
-            <option value="month">Theo tháng</option>
-          </select>
-        </label>
+      <div className="mb-5 grid gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-slate-800">Thống kê theo khoảng ngày</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Chọn ngày bắt đầu và kết thúc; kiểu gom nhóm chỉ thay đổi cách phân chia kết quả.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <label className="text-xs font-semibold text-slate-600">Từ ngày
+              <input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} className="mt-1 block h-10 rounded-lg border border-slate-300 px-3 text-sm font-normal" />
+            </label>
+            <label className="text-xs font-semibold text-slate-600">Đến ngày
+              <input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} className="mt-1 block h-10 rounded-lg border border-slate-300 px-3 text-sm font-normal" />
+            </label>
+            <button
+              type="button"
+              onClick={applyDateRange}
+              disabled={!from || !to || from > to}
+              className="h-10 rounded-lg bg-emerald-800 px-4 text-sm font-semibold text-white hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Thống kê
+            </button>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-slate-800">Thống kê kỳ hiện tại</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Chọn nhanh hôm nay, tuần này hoặc tháng này; lịch bên trên vẫn dùng được để tùy chỉnh khoảng ngày.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {([
+              ["today", "Hôm nay"],
+              ["week", "Tuần này"],
+              ["month", "Tháng này"],
+            ] as const).map(([period, label]) => {
+              const range = currentPeriodRange(
+                period === "today" ? "day" : period,
+              );
+              const selected = getCurrentPeriod(groupBy) === period &&
+                range.from === reportFrom &&
+                range.to === reportTo;
+              return (
+                <button
+                  key={period}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => showCurrentPeriod(period as CurrentPeriod)}
+                  className={`h-10 rounded-lg border px-4 text-sm font-semibold ${
+                    selected
+                      ? "border-emerald-800 bg-emerald-800 text-white"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
       {invalidRange && <p className="mb-4 text-sm text-red-700">Ngày bắt đầu không được sau ngày kết thúc.</p>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

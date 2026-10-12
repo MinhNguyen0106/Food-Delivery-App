@@ -538,7 +538,6 @@ All address routes are Customer-only and scoped to the authenticated Customer.
       "subtotal": 100,
 
       "deliveryFee": 10,
-
       "discount": 0,
 
       "totalAmount": 110,
@@ -551,22 +550,39 @@ All address routes are Customer-only and scoped to the authenticated Customer.
   ```
 
 - **Server calculations:** food prices, subtotal, distance-based delivery
-
   fee, discount and total are calculated by the backend. Address must belong
-
-  to the Customer. Cart items must be available and from one active/open
+  to the Customer. The legacy immediate-checkout endpoint remains for existing
+  clients; the current app uses scheduled delivery, where the Customer chooses
+  a date and available 15-minute slot. The backend enforces a maximum 10 km
+  driving distance and derives travel time from the configured average shipper
+  speed (20 km/h by default). Cart items must be available and from one active/open
 
   restaurant. Successful checkout creates the order, order details, pending
 
   COD payment, delivery, history record and clears the cart in a transaction.
 
 - **Errors:** `400` invalid fields; `401` authentication failure; `403` wrong
-
   actor; `404` address not found/not owned; `409` empty cart, unavailable
-
   food/restaurant, closed restaurant, restaurant mismatch, or invalid/
-
   expired/inactive/exhausted voucher; `500` configuration or unexpected error.
+
+#### Legacy delivery-estimate workflow
+
+The estimate endpoints and stored estimate fields remain for existing legacy
+orders. New scheduled orders do not use Restaurant-proposed delivery estimates.
+
+#### Scheduled delivery checkout
+
+- **Available slots:** `GET /api/v1/delivery/available-slots?address_id={id}&date=YYYY-MM-DD`.
+  Returns only slots that are within 10 km by road, have remaining restaurant
+  capacity, fit preparation + travel + buffer time, and fall within opening
+  hours. Travel time uses the configured average shipper speed (20 km/h by
+  default).
+- **Create scheduled order:** `POST /api/v1/orders/schedule` with
+  `{ "address_id": 1, "date": "YYYY-MM-DD", "slot_id": 1, "note": "...", "voucher_code": "..." }`.
+  The server rechecks slot availability and capacity in a transaction. New
+  orders start as `SCHEDULED`, can be cancelled free before activation, and
+  automatically move to `PROCESSING` at the calculated trigger time.
 
 ### 3.7 Orders
 
@@ -574,7 +590,8 @@ All address routes are Customer-only and scoped to the authenticated Customer.
 
 - **Method / endpoint:** `GET /api/orders`
 
-- **Query:** optional `status` from `PENDING`, `CONFIRMED`, `PREPARING`,
+- **Query:** optional `status` from `SCHEDULED`, `PENDING`, `CONFIRMED`,
+  `PROCESSING`, `PREPARING`,
 
   `READY_FOR_PICKUP`, `PICKED_UP`, `DELIVERING`, `COMPLETED`, `CANCELLED`,
 

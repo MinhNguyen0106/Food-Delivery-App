@@ -38,9 +38,17 @@ export default function CheckoutSuccessScreen() {
   return (
     <Page contentStyle={styles.content}>
       <View style={styles.successMark}><Text style={styles.check}>✓</Text></View>
-      <Text style={styles.eyebrow}>ĐÃ GỬI ĐẾN NHÀ HÀNG</Text>
-      <Text style={styles.title}>Cảm ơn bạn{'\n'}đã đặt món.</Text>
-      <Text style={styles.subtitle}>Nhà hàng sẽ sớm xác nhận đơn. Bạn có thể xem cập nhật tại mục Đơn hàng.</Text>
+      <Text style={styles.eyebrow}>
+        {order.status === 'SCHEDULED' ? 'ĐÃ ĐẶT LỊCH GIAO' : 'ĐÃ GỬI ĐẾN NHÀ HÀNG'}
+      </Text>
+      <Text style={styles.title}>
+        {order.status === 'SCHEDULED' ? 'Đơn của bạn\nđã được lên lịch.' : 'Cảm ơn bạn\nđã đặt món.'}
+      </Text>
+      <Text style={styles.subtitle}>
+        {order.scheduledFor
+          ? `Đơn đã được đặt theo khung giờ bạn chọn (${order.scheduledFor}). Hệ thống sẽ tự gửi đơn đến nhà hàng đúng thời điểm chuẩn bị.`
+          : 'Nhà hàng sẽ sớm xác nhận đơn. Bạn có thể xem cập nhật tại mục Đơn hàng.'}
+      </Text>
       <Surface style={styles.orderCard}>
         <View style={styles.orderRow}><Text style={styles.label}>Mã đơn</Text><Text style={styles.value}>{order.code}</Text></View>
         <View style={styles.orderRow}><Text style={styles.label}>Tiền món</Text><Text style={styles.value}>{formatCurrency(order.subtotal ?? order.total)}</Text></View>

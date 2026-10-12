@@ -61,6 +61,12 @@ not define additional endpoints.
 | Restaurant | `orderService` | `prepareOrder` | POST | `/orders/{id}/prepare` | `/api/orders/{id}/prepare` | Positive `id`; optional JSON `{ note }`; omitted when undefined | `data: { orderId, previousStatus, status }` | Bearer JWT; owning Restaurant | PASS |
 | Restaurant | `orderService` | `markReadyForPickup` | POST | `/orders/{id}/ready-for-pickup` | `/api/orders/{id}/ready-for-pickup` | Positive `id`; optional JSON `{ note }`; omitted when undefined | `data: { orderId, previousStatus, status }` | Bearer JWT; owning Restaurant | PASS |
 
+### Legacy delivery-estimate workflow
+
+New orders are scheduled by the Customer and automatically move to
+`PROCESSING` at the backend trigger time. The Restaurant starts preparation
+from `PROCESSING`; the old estimate endpoint remains only for compatibility.
+
 ## Reviews and Reports
 
 | Actor | Service | Method | HTTP Method | Frontend Endpoint | Backend Endpoint | Request Params/Body | Response | Auth/Role | Status |
