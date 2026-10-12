@@ -329,17 +329,17 @@ Các màn hình **không đưa vào MVP**: quên mật khẩu/OTP, yêu thích, 
 
 #### 11. Xác nhận checkout — `/checkout`
 
-- **Cần hiển thị:** nhà hàng, món/số lượng, tạm tính, địa chỉ, voucher đã chọn, COD; bản đồ tuyến đường và quãng đường từ nhà hàng tới nơi nhận; phí giao hàng/giảm giá/tổng theo giá trị backend xác nhận.
-- **UI chính:** tóm tắt đơn, chọn/đổi địa chỉ, bản đồ OpenStreetMap với hai điểm và tuyến tham khảo, ghi chú đơn, lựa chọn COD (mặc định), CTA “Đặt hàng”.
-- **Tương tác & API:** lấy giỏ/địa chỉ/voucher qua `GET /api/carts`, `GET /api/addresses`, `GET /api/vouchers/available`; gọi `POST /api/orders/quote` với `{address_id, voucher_code?}` để xem tổng tạm tính và gửi `POST /api/orders/checkout` với `{address_id, note?, voucher_code?}` để tạo đơn.
-- **Dữ liệu:** `cart_items`, địa chỉ, `vouchers.code/discount_value/min_order_value/start_date/end_date`; order response gồm `orderId/orderCode/subtotal/deliveryFee/discount/totalAmount/paymentMethod/voucherCode`.
+- **Cần hiển thị:** nhà hàng, món/số lượng, tạm tính, địa chỉ, voucher đã chọn, COD; bản đồ tuyến đường; ngày và slot nhận hàng 15 phút còn khả dụng, quãng đường và ETA theo tốc độ shipper trung bình; phí giao hàng/giảm giá/tổng theo giá trị backend xác nhận.
+- **UI chính:** tóm tắt đơn, chọn/đổi địa chỉ, bản đồ OpenStreetMap với tuyến tham khảo, dải ngày, danh sách slot khả dụng, ghi chú đơn, lựa chọn COD (mặc định), CTA “Đặt hàng”. Khách phải tự chọn một slot trước khi có thể gửi đơn.
+- **Tương tác & API:** lấy giỏ/địa chỉ/voucher qua `GET /api/carts`, `GET /api/addresses`, `GET /api/vouchers/available`; gọi `GET /api/v1/delivery/available-slots?address_id={id}&date=YYYY-MM-DD` để tải slot còn công suất và đủ thời gian, sau đó gửi `POST /api/v1/orders/schedule` với `{address_id, date, slot_id, note?, voucher_code?}`. Máy chủ chỉ nhận tuyến đường tối đa 10 km; thời gian di chuyển được tính từ khoảng cách đường đi và tốc độ mặc định 20 km/h. Đơn `SCHEDULED` được kích hoạt tự động trước slot.
+- **Dữ liệu:** `cart_items`, địa chỉ, `vouchers.code/discount_value/min_order_value/start_date/end_date`, `time_slots`, `restaurant_capacities`, `orders.scheduled_for/scheduled_slot_end/status`.
 - **Lưu ý quan trọng:** tuyến đường được lấy qua dịch vụ routing OpenStreetMap; nếu dịch vụ không sẵn sàng, hiển thị khoảng cách đường thẳng có nhãn rõ ràng. Phí giao hàng cuối cùng vẫn do máy chủ tính riêng. API quote tính phí giao hàng, giảm giá và tổng tiền theo dữ liệu tại thời điểm gọi nhưng không tạo order hoặc tiêu thụ lượt voucher. Checkout vẫn tính lại trong transaction; báo giá không phải là giữ chỗ giá/voucher. Server là nguồn sự thật; xử lý lỗi `409` cho cart rỗng, nhà hàng đóng, món không khả dụng hoặc voucher không hợp lệ.
 
 #### 12. Đặt hàng thành công — `/checkout/success/[orderId]`
 
 - **Cần hiển thị:** mã order, tổng COD, phí giao hàng, giảm giá, phương thức thanh toán, trạng thái ban đầu.
 - **UI chính:** success state, CTA “Theo dõi đơn”, “Tiếp tục khám phá”.
-- **Tương tác & API:** dùng response `POST /api/orders/checkout`; có thể tải `GET /api/orders/{id}` để đồng bộ chi tiết.
+- **Tương tác & API:** dùng response `POST /api/v1/orders/schedule`; có thể tải `GET /api/orders/{id}` để đồng bộ chi tiết.
 - **Dữ liệu:** response checkout và `orders.order_code/status/created_at/subtotal/delivery_fee/discount/total_amount`.
 - **Lưu ý:** chống gửi checkout lặp khi request đang chạy; giỏ đã được backend xóa trong transaction thành công.
 

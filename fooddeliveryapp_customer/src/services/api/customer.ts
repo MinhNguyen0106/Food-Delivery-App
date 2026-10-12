@@ -45,9 +45,31 @@ export interface CheckoutResult {
   totalAmount: number;
   paymentMethod: string;
   voucherCode: string | null;
+  scheduledFor?: string;
+  travelMinutes?: number;
 }
 
 export type CheckoutQuote = Omit<CheckoutResult, 'orderId' | 'orderCode'>;
+
+export interface AvailableDeliverySlot {
+  slotId: number;
+  start: string;
+  end: string;
+  capacity: number;
+  booked: number;
+  prepMinutes: number;
+  travelMinutes: number;
+  distanceMeters: number;
+  requiredLeadMinutes: number;
+}
+
+export interface AvailableDeliverySlots {
+  date: string;
+  distanceMeters: number;
+  travelMinutes: number;
+  averageSpeedKmh: number;
+  slots: AvailableDeliverySlot[];
+}
 
 function record(value: unknown, entity: string): ApiRecord {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -75,6 +97,23 @@ function id(value: unknown, field: string): number {
   const parsed = number(value, field);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
     throw new Error(`Máy chủ trả về mã ${field} không hợp lệ.`);
+  }
+  return parsed;
+}
+
+function optionalPositiveInteger(value: unknown, field: string): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const parsed = number(value, field);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2147483647) {
+    throw new Error(`Máy chủ trả về trường ${field} không hợp lệ.`);
+  }
+  return parsed;
+}
+
+function nonNegativeInteger(value: unknown, field: string): number {
+  const parsed = number(value, field);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 2147483647) {
+    throw new Error(`Máy chủ trả về trường ${field} không hợp lệ.`);
   }
   return parsed;
 }
@@ -175,8 +214,10 @@ function mapOrder(value: unknown, reviewedOrderIds: Set<string> = new Set()): De
     ? {}
     : record(order.delivery, 'giao hàng');
   const allowedStatuses = [
+    'SCHEDULED',
     'PENDING',
     'CONFIRMED',
+    'PROCESSING',
     'PREPARING',
     'READY_FOR_PICKUP',
     'PICKED_UP',
@@ -199,6 +240,14 @@ function mapOrder(value: unknown, reviewedOrderIds: Set<string> = new Set()): De
     subtotal: number(order.subtotal, 'subtotal'),
     deliveryFee: number(order.delivery_fee, 'delivery_fee'),
     discount: number(order.discount, 'discount'),
+    estimatedDeliveryMinutes: optionalPositiveInteger(
+      order.estimated_delivery_minutes,
+      'estimated_delivery_minutes',
+    ),
+    estimatedDeliveryAccepted: Boolean(order.estimated_delivery_accepted_at),
+    scheduledFor: order.scheduled_for === null || order.scheduled_for === undefined
+      ? undefined
+      : dateLabel(text(order.scheduled_for, 'scheduled_for')),
     items,
     addressId: String(id(order.address_id, 'address_id')),
     addressName: text(order.address_name, 'address_name', true),
@@ -342,7 +391,11 @@ export async function getOrder(
 
 export async function checkout(
   token: string,
-  input: { address_id: number; note?: string; voucher_code?: string },
+  input: {
+    address_id: number;
+    note?: string;
+    voucher_code?: string;
+  },
 ): Promise<CheckoutResult> {
   const result = record(await apiRequest('/orders/checkout', {
     method: 'POST',
@@ -358,6 +411,71 @@ export async function checkout(
     totalAmount: number(result.totalAmount, 'totalAmount'),
     paymentMethod: text(result.paymentMethod, 'paymentMethod'),
     voucherCode: text(result.voucherCode, 'voucherCode', true) || null,
+  };
+}
+
+export async function getAvailableDeliverySlots(
+  token: string,
+  addressId: number,
+  date: string,
+): Promise<AvailableDeliverySlots> {
+  const query = new URLSearchParams({
+    address_id: String(addressId),
+    date,
+  });
+  const result = record(
+    await apiRequest(`/v1/delivery/available-slots?${query.toString()}`, { token }),
+    'khung giờ giao hàng',
+  );
+  const slots = array(result.slots, 'khung giờ giao hàng').map((value) => {
+    const slot = record(value, 'khung giờ giao hàng');
+    return {
+      slotId: id(slot.slotId, 'slotId'),
+      start: text(slot.start, 'start'),
+      end: text(slot.end, 'end'),
+      capacity: id(slot.capacity, 'capacity'),
+      booked: number(slot.booked, 'booked'),
+      prepMinutes: id(slot.prepMinutes, 'prepMinutes'),
+      travelMinutes: nonNegativeInteger(slot.travelMinutes, 'travelMinutes'),
+      distanceMeters: number(slot.distanceMeters, 'distanceMeters'),
+      requiredLeadMinutes: id(slot.requiredLeadMinutes, 'requiredLeadMinutes'),
+    };
+  });
+  return {
+    date: text(result.date, 'date'),
+    distanceMeters: number(result.distanceMeters, 'distanceMeters'),
+    travelMinutes: nonNegativeInteger(result.travelMinutes, 'travelMinutes'),
+    averageSpeedKmh: number(result.averageSpeedKmh, 'averageSpeedKmh'),
+    slots,
+  };
+}
+
+export async function scheduleOrder(
+  token: string,
+  input: {
+    address_id: number;
+    date: string;
+    slot_id: number;
+    note?: string;
+    voucher_code?: string;
+  },
+): Promise<CheckoutResult> {
+  const result = record(await apiRequest('/v1/orders/schedule', {
+    method: 'POST',
+    token,
+    body: input,
+  }), 'kết quả đặt đơn giao theo lịch');
+  return {
+    orderId: id(result.orderId, 'orderId'),
+    orderCode: text(result.orderCode, 'orderCode'),
+    subtotal: number(result.subtotal, 'subtotal'),
+    deliveryFee: number(result.deliveryFee, 'deliveryFee'),
+    discount: number(result.discount, 'discount'),
+    totalAmount: number(result.totalAmount, 'totalAmount'),
+    paymentMethod: text(result.paymentMethod, 'paymentMethod'),
+    voucherCode: text(result.voucherCode, 'voucherCode', true) || null,
+    scheduledFor: text(result.scheduledFor, 'scheduledFor'),
+    travelMinutes: id(result.travelMinutes, 'travelMinutes'),
   };
 }
 

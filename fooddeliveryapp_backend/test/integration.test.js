@@ -57,6 +57,8 @@ test('isolated MySQL API integration workflows', {
          start_date = '2020-01-01 00:00:00', end_date = '2020-01-02 00:00:00'
      WHERE voucher_id = 3`
   );
+  await pool.execute('UPDATE orders SET voucher_id = NULL WHERE order_id IN (1, 2)');
+  await pool.execute('UPDATE vouchers SET used_count = 0 WHERE voucher_id IN (1, 2)');
 
   const app = require('../src/app');
   const server = app.listen(0);
@@ -455,7 +457,13 @@ test('isolated MySQL API integration workflows', {
     });
     assert.equal(checkout.status, 201);
     assert.equal(checkout.body.data.paymentMethod, 'COD');
+    assert.equal(checkout.body.data.estimatedDeliveryMinutes, undefined);
     assert.equal(Number(checkout.body.data.subtotal), 175000);
+    const [createdOrderEstimate] = await pool.execute(
+      'SELECT estimated_delivery_minutes FROM orders WHERE order_id = ?',
+      [checkout.body.data.orderId]
+    );
+    assert.equal(createdOrderEstimate[0].estimated_delivery_minutes, null);
     assert.equal(
       Number(checkout.body.data.totalAmount),
       Number(checkout.body.data.subtotal) +
@@ -476,6 +484,38 @@ test('isolated MySQL API integration workflows', {
     assert.equal(createdOrder[0].payment_status, 'PENDING');
     const clearedCart = await api('GET', '/api/carts', { token: customer });
     assert.equal(clearedCart.body.data.items.length, 0);
+    assert.equal(
+      (await api('POST', '/api/cart_items', {
+        token: customer,
+        body: { food_id: 1, quantity: 1 },
+      })).status,
+      200
+    );
+    const rejectedEtaOrder = await api('POST', '/api/orders/checkout', {
+      token: customer,
+      body: { address_id: 1 },
+    });
+    assert.equal(rejectedEtaOrder.status, 201);
+    const rejectedEtaOrderId = rejectedEtaOrder.body.data.orderId;
+    assert.equal(
+      (await api('POST', `/api/orders/${rejectedEtaOrderId}/confirm`, {
+        token: restaurant,
+        body: { estimated_delivery_minutes: 20 },
+      })).status,
+      200
+    );
+    assert.equal(
+      (await api('POST', `/api/orders/${rejectedEtaOrderId}/cancel`, {
+        token: customer,
+        body: {},
+      })).status,
+      200
+    );
+    const rejectedOrderDetail = await api('GET', `/api/orders/${rejectedEtaOrderId}`, {
+      token: customer,
+    });
+    assert.equal(rejectedOrderDetail.status, 200);
+    assert.equal(rejectedOrderDetail.body.data.status, 'CANCELLED');
     t.diagnostic(`Created isolated test order ${orderId} for workflow checks.`);
   });
 
@@ -492,11 +532,39 @@ test('isolated MySQL API integration workflows', {
     assert.equal(
       (await api('POST', `/api/orders/${orderId}/confirm`, {
         token: restaurantB,
-        body: {},
+        body: { estimated_delivery_minutes: 35 },
       })).status,
       404
     );
-    for (const action of ['confirm', 'prepare', 'ready-for-pickup']) {
+    const proposal = await api('POST', `/api/orders/${orderId}/confirm`, {
+      token: restaurant,
+      body: { estimated_delivery_minutes: 35 },
+    });
+    assert.equal(proposal.status, 200);
+    const pendingEstimate = await api('GET', `/api/orders/${orderId}`, {
+      token: customer,
+    });
+    assert.equal(Number(pendingEstimate.body.data.estimated_delivery_minutes), 35);
+    assert.equal(pendingEstimate.body.data.estimated_delivery_accepted_at, null);
+    assert.equal(
+      (await api('POST', `/api/orders/${orderId}/prepare`, {
+        token: restaurant,
+        body: {},
+      })).status,
+      409
+    );
+    const acceptedEstimate = await api(
+      'POST',
+      `/api/orders/${orderId}/accept-estimate`,
+      { token: customer, body: {} }
+    );
+    assert.equal(acceptedEstimate.status, 200);
+    assert.equal(acceptedEstimate.body.data.estimatedDeliveryMinutes, 35);
+    const acceptedOrder = await api('GET', `/api/orders/${orderId}`, {
+      token: customer,
+    });
+    assert.ok(acceptedOrder.body.data.estimated_delivery_accepted_at);
+    for (const action of ['prepare', 'ready-for-pickup']) {
       const transition = await api('POST', `/api/orders/${orderId}/${action}`, {
         token: restaurant,
         body: {},
@@ -783,8 +851,10 @@ test('isolated MySQL API integration workflows', {
     assert.equal(quote.body.data.paymentMethod, 'COD');
     assert.equal(quote.body.data.voucherCode, 'GIAM20K');
     assert.equal(
-      quote.body.data.totalAmount,
-      quote.body.data.subtotal + quote.body.data.deliveryFee - quote.body.data.discount
+      Number(quote.body.data.totalAmount),
+      Number(quote.body.data.subtotal) +
+        Number(quote.body.data.deliveryFee) -
+        Number(quote.body.data.discount)
     );
     const invalidQuote = await api('POST', '/api/orders/quote', {
       token: customer,

@@ -68,7 +68,28 @@ function transition(action) {
   };
 }
 
-exports.confirm = transition('confirm');
+exports.confirm = async (req, res, next) => {
+  try {
+    const data = await orderService.transitionOrder(
+      req.params.id,
+      'confirm',
+      req.body.note,
+      req.user,
+      req.body.estimated_delivery_minutes
+    );
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
+exports.acceptEstimate = async (req, res, next) => {
+  try {
+    const data = await orderService.acceptDeliveryEstimate(req.params.id, req.user);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+};
 exports.reject = transition('reject');
 exports.prepare = transition('prepare');
 exports.ready = transition('ready');

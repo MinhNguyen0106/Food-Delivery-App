@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import DeliveryRouteMap from '@/components/maps/DeliveryRouteMap';
 import { ListPagination } from '@/components/ListPagination';
@@ -22,7 +22,12 @@ import { usePrototype } from '@/providers/PrototypeProvider';
 import { useSession } from '@/providers/SessionProvider';
 import { getErrorMessage } from '@/services/api/client';
 import { getRestaurant } from '@/services/api/catalog';
-import { getCheckoutQuote, type CheckoutQuote } from '@/services/api/customer';
+import {
+  getAvailableDeliverySlots,
+  getCheckoutQuote,
+  type AvailableDeliverySlots,
+  type CheckoutQuote,
+} from '@/services/api/customer';
 import {
   getDrivingRoute,
   straightLineDistanceMeters,
@@ -61,6 +66,24 @@ function formatDistance(distanceMeters: number): string {
     : `${(distanceMeters / 1000).toFixed(1)} km`;
 }
 
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function formatDateChoice(date: Date, offset: number): string {
+  if (offset === 0) return 'Hôm nay';
+  if (offset === 1) return 'Ngày mai';
+  return date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
+}
+
+function timePart(value: string): string {
+  return value.split(' ')[1]?.slice(0, 5) ?? value;
+}
+
 export default function CheckoutScreen() {
   const {
     cart,
@@ -82,6 +105,14 @@ export default function CheckoutScreen() {
   const [quoteRetry, setQuoteRetry] = useState(0);
   const [routeResponse, setRouteResponse] = useState<DeliveryRouteState | null>(null);
   const [routeFailure, setRouteFailure] = useState<DeliveryRouteFailure | null>(null);
+  const [deliveryDate, setDeliveryDate] = useState(() => localDateKey(new Date()));
+  const [slotsResponse, setSlotsResponse] = useState<{
+    key: string;
+    data: AvailableDeliverySlots;
+  } | null>(null);
+  const [slotsFailure, setSlotsFailure] = useState<{ key: string; message: string } | null>(null);
+  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [isSlotPickerOpen, setIsSlotPickerOpen] = useState(false);
   const [cartPage, setCartPage] = useState(1);
   const cartPageCount = Math.max(1, Math.ceil(cart.length / CHECKOUT_ITEMS_PER_PAGE));
   const currentCartPage = Math.min(cartPage, cartPageCount);
@@ -99,16 +130,32 @@ export default function CheckoutScreen() {
   });
   const currentRoute = routeResponse?.key === routeKey ? routeResponse : null;
   const currentRouteError = routeFailure?.key === routeKey ? routeFailure.message : '';
+  const slotsKey = JSON.stringify({
+    addressId: selectedAddress?.id,
+    date: deliveryDate,
+    cart: cart.map(({ food }) => food.restaurantId),
+  });
+  const currentSlots = slotsResponse?.key === slotsKey ? slotsResponse.data : null;
+  const currentSlotsError = slotsFailure?.key === slotsKey ? slotsFailure.message : '';
+  const isSlotsLoading = Boolean(
+    token && cart.length && selectedAddress && !currentSlots && !currentSlotsError,
+  );
+  const selectedSlot = currentSlots?.slots.find((slot) => slot.slotId === selectedSlotId) ?? null;
+  const deliveryDates = useMemo(() => Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return { value: localDateKey(date), label: formatDateChoice(date, offset) };
+  }), []);
   const isRouteLoading = Boolean(
     token && restaurantId && selectedAddress && !currentRoute && !currentRouteError,
   );
-  const quoteKey = useMemo(() => JSON.stringify({
+  const quoteKey = JSON.stringify({
     address: selectedAddress
       ? [selectedAddress.id, selectedAddress.latitude, selectedAddress.longitude]
       : null,
     cart: cart.map(({ food, quantity }) => [food.id, quantity, food.price]),
     voucher: selectedVoucherCode,
-  }), [cart, selectedAddress, selectedVoucherCode]);
+  });
   const currentQuote = quoteResponse?.key === quoteKey ? quoteResponse.quote : null;
   const currentQuoteError = quoteFailure?.key === quoteKey ? quoteFailure.message : '';
   const hasQuoteInput = Boolean(token && cart.length && selectedAddress);
@@ -173,6 +220,26 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (!token || !cart.length || !selectedAddress) return undefined;
     let active = true;
+    void getAvailableDeliverySlots(token, Number(selectedAddress.id), deliveryDate)
+      .then((data) => {
+        if (!active) return;
+        setSlotsResponse({ key: slotsKey, data });
+        setSlotsFailure(null);
+        setSelectedSlotId(null);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setSlotsFailure({ key: slotsKey, message: getErrorMessage(error) });
+        setSelectedSlotId(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [cart, deliveryDate, selectedAddress, slotsKey, token]);
+
+  useEffect(() => {
+    if (!token || !cart.length || !selectedAddress) return undefined;
+    let active = true;
     const timer = setTimeout(() => {
       void getCheckoutQuote(token, {
         address_id: Number(selectedAddress.id),
@@ -204,6 +271,13 @@ export default function CheckoutScreen() {
       router.push('/checkout/address');
       return;
     }
+    if (!selectedSlot) {
+      showNotice(
+        'Chưa chọn được khung giờ',
+        currentSlotsError || 'Vui lòng chọn một khung giờ giao còn khả dụng.',
+      );
+      return;
+    }
     if (isQuoteLoading) return;
     if (!currentQuote && !continueWithoutQuote) {
       showConfirmation(
@@ -216,7 +290,12 @@ export default function CheckoutScreen() {
     }
     setIsSubmitting(true);
     try {
-      const order = await placeOrder(selectedVoucherCode, orderNote.trim());
+      const order = await placeOrder(
+        selectedVoucherCode,
+        orderNote.trim(),
+        deliveryDate,
+        selectedSlot.slotId,
+      );
       if (order) {
         router.replace({
           pathname: '/checkout/success/[orderId]',
@@ -309,6 +388,137 @@ export default function CheckoutScreen() {
           />
         </Surface>
 
+        <Surface style={styles.slotCard}>
+          <Text style={styles.sectionLabel}>Chọn thời điểm nhận hàng</Text>
+          <Text style={styles.muted}>
+            Chỉ giao trong bán kính đường đi tối đa 10 km. Thời gian di chuyển được ước tính theo tốc độ shipper trung bình do hệ thống cấu hình.
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dateChoices}>
+            {deliveryDates.map((choice) => (
+              <Pressable
+                key={choice.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: deliveryDate === choice.value }}
+                onPress={() => {
+                  setDeliveryDate(choice.value);
+                  setSelectedSlotId(null);
+                }}
+                style={[
+                  styles.dateChoice,
+                  deliveryDate === choice.value ? styles.dateChoiceSelected : null,
+                ]}
+              >
+                <Text style={[
+                  styles.dateChoiceText,
+                  deliveryDate === choice.value ? styles.selectedChoiceText : null,
+                ]}>{choice.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          {isSlotsLoading ? (
+            <View style={styles.slotLoading}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.muted}>Đang kiểm tra khoảng cách, thời gian và công suất bếp…</Text>
+            </View>
+          ) : currentSlotsError ? (
+            <Text style={styles.slotError}>{currentSlotsError}</Text>
+          ) : currentSlots?.slots.length ? (
+            <>
+              <Text style={styles.muted}>
+                Quãng đường {formatDistance(currentSlots.distanceMeters)} · Đi khoảng {currentSlots.travelMinutes} phút · Tốc độ {currentSlots.averageSpeedKmh} km/h
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Chọn khung giờ giao hàng"
+                accessibilityState={{ expanded: isSlotPickerOpen }}
+                onPress={() => setIsSlotPickerOpen(true)}
+                style={styles.slotPicker}
+              >
+                <View style={styles.slotPickerCopy}>
+                  <Text style={selectedSlot ? styles.slotPickerValue : styles.slotPickerPlaceholder}>
+                    {selectedSlot
+                      ? `${timePart(selectedSlot.start)} – ${timePart(selectedSlot.end)}`
+                      : 'Chọn khung giờ giao'}
+                  </Text>
+                  {selectedSlot ? (
+                    <Text style={styles.slotPickerMeta}>
+                      Chuẩn bị {selectedSlot.prepMinutes} phút · nhận trong khung đã chọn
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.slotPickerChevron}>⌄</Text>
+              </Pressable>
+              <Modal
+                visible={isSlotPickerOpen}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setIsSlotPickerOpen(false)}
+              >
+                <View style={styles.slotModalBackdrop}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Đóng danh sách khung giờ"
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => setIsSlotPickerOpen(false)}
+                  />
+                  <View style={styles.slotModal}>
+                    <View style={styles.slotModalHeader}>
+                      <View>
+                        <Text style={styles.slotModalTitle}>Khung giờ giao</Text>
+                        <Text style={styles.muted}>{currentSlots.slots.length} khung giờ còn khả dụng</Text>
+                      </View>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Đóng"
+                        onPress={() => setIsSlotPickerOpen(false)}
+                        style={styles.slotModalClose}
+                      >
+                        <Text style={styles.slotModalCloseText}>×</Text>
+                      </Pressable>
+                    </View>
+                    <ScrollView style={styles.slotOptions} showsVerticalScrollIndicator>
+                      {currentSlots.slots.map((slot) => {
+                        const isSelected = selectedSlotId === slot.slotId;
+                        return (
+                          <Pressable
+                            key={slot.slotId}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: isSelected }}
+                            onPress={() => {
+                              setSelectedSlotId(slot.slotId);
+                              setIsSlotPickerOpen(false);
+                            }}
+                            style={[
+                              styles.slotOption,
+                              isSelected ? styles.slotOptionSelected : null,
+                            ]}
+                          >
+                            <Text style={[
+                              styles.slotOptionTime,
+                              isSelected ? styles.slotOptionTextSelected : null,
+                            ]}>
+                              {timePart(slot.start)} – {timePart(slot.end)}
+                            </Text>
+                            <Text style={[
+                              styles.slotOptionMeta,
+                              isSelected ? styles.slotOptionTextSelected : null,
+                            ]}>
+                              Chuẩn bị {slot.prepMinutes} phút
+                            </Text>
+                            {isSelected ? <Text style={styles.slotOptionCheck}>✓</Text> : null}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </View>
+              </Modal>
+            </>
+          ) : (
+            <Text style={styles.muted}>Không còn khung giờ phù hợp trong ngày này. Hãy chọn ngày khác.</Text>
+          )}
+        </Surface>
+
         <Surface style={styles.voucherCard}>
           <View style={styles.voucherIcon}><Text style={styles.voucherIconText}>%</Text></View>
           <View style={styles.voucherCopy}>
@@ -379,7 +589,7 @@ export default function CheckoutScreen() {
         <AppButton
           label={isLoading ? 'Đang tải...' : isSubmitting ? 'Đang gửi đơn...' : 'Đặt hàng'}
           onPress={() => { void submitOrder(); }}
-          disabled={isLoading || isSubmitting || isQuoteLoading}
+          disabled={isLoading || isSubmitting || isQuoteLoading || isSlotsLoading || !selectedSlot}
         />
       </BottomAction>
     </>
@@ -409,6 +619,33 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 10, lineHeight: 15 },
   chevron: { color: colors.subtle, fontSize: 24 },
   orderCard: { gap: 13 },
+  slotCard: { gap: 11 },
+  dateChoices: { gap: 8, paddingVertical: 2 },
+  dateChoice: { minHeight: 38, justifyContent: 'center', paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  dateChoiceSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
+  dateChoiceText: { color: colors.ink, fontSize: 10, fontWeight: '700' },
+  selectedChoiceText: { color: '#FFFFFF' },
+  slotLoading: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  slotError: { color: colors.rose, fontSize: 11, lineHeight: 16 },
+  slotPicker: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  slotPickerCopy: { flex: 1, gap: 3 },
+  slotPickerValue: { color: colors.ink, fontSize: 12, fontWeight: '800' },
+  slotPickerPlaceholder: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  slotPickerMeta: { color: colors.muted, fontSize: 9 },
+  slotPickerChevron: { color: colors.accent, fontSize: 20, fontWeight: '800' },
+  slotModalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20, 24, 22, 0.35)' },
+  slotModal: { maxHeight: '78%', gap: 12, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, borderTopLeftRadius: 22, borderTopRightRadius: 22, backgroundColor: colors.surface },
+  slotModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  slotModalTitle: { color: colors.ink, fontSize: 16, fontWeight: '800' },
+  slotModalClose: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: colors.paper },
+  slotModalCloseText: { color: colors.ink, fontSize: 24, lineHeight: 26 },
+  slotOptions: { flexGrow: 0 },
+  slotOption: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
+  slotOptionSelected: { borderRadius: 10, backgroundColor: colors.accent },
+  slotOptionTime: { width: 110, color: colors.ink, fontSize: 12, fontWeight: '800' },
+  slotOptionMeta: { flex: 1, color: colors.muted, fontSize: 10 },
+  slotOptionTextSelected: { color: '#FFFFFF' },
+  slotOptionCheck: { color: '#FFFFFF', fontWeight: '800' },
   restaurantRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   restaurantMonogram: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: colors.accentSoft },
   monogramText: { color: colors.accent, fontSize: 14, fontWeight: '700' },

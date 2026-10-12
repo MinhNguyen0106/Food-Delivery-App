@@ -7,13 +7,14 @@ import { ListPagination } from "@/components/shared/ListPagination";
 import { orderService } from "@/services/order.service";
 import type { Order, OrderStatus } from "@/types/order";
 
-type OrderFilter = OrderStatus | "ACTIVE" | "ALL";
+type OrderFilter = OrderStatus | "ACTIVE";
 
 const statusFilters: { label: string; value: OrderFilter }[] = [
   { label: "Đang xử lý", value: "ACTIVE" },
-  { label: "Mọi trạng thái", value: "ALL" },
+  { label: "Đã đặt lịch", value: "SCHEDULED" },
   { label: "Chờ xác nhận", value: "PENDING" },
   { label: "Đã xác nhận", value: "CONFIRMED" },
+  { label: "Đến giờ chuẩn bị", value: "PROCESSING" },
   { label: "Đang chuẩn bị", value: "PREPARING" },
   { label: "Chờ shipper lấy", value: "READY_FOR_PICKUP" },
   { label: "Đang giao", value: "DELIVERING" },
@@ -47,13 +48,11 @@ export default function OrdersPage() {
   async function update(order: Order, status: OrderStatus) {
     try {
       const result =
-        status === "CONFIRMED"
-          ? await orderService.confirmOrder(order.orderId)
-          : status === "PREPARING"
-            ? await orderService.prepareOrder(order.orderId)
-            : status === "READY_FOR_PICKUP"
-              ? await orderService.markReadyForPickup(order.orderId)
-              : null;
+        status === "PREPARING"
+          ? await orderService.prepareOrder(order.orderId)
+          : status === "READY_FOR_PICKUP"
+            ? await orderService.markReadyForPickup(order.orderId)
+            : null;
       if (!result) {
         throw new Error(`Không hỗ trợ chuyển đơn sang trạng thái ${status}`);
       }
@@ -66,6 +65,7 @@ export default function OrdersPage() {
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không thể cập nhật đơn");
+      throw e;
     }
   }
   async function reject(order: Order, note: string) {
@@ -83,12 +83,10 @@ export default function OrdersPage() {
     }
   }
 
-  const visibleOrders = orders.filter((order) =>
-    statusFilter === "ALL"
-      ? true
-      : statusFilter === "ACTIVE"
-        ? !["COMPLETED", "CANCELLED", "REJECTED"].includes(order.status)
-        : order.status === statusFilter,
+  const visibleOrders = orders.filter(
+    (order) =>
+      !["COMPLETED", "CANCELLED", "REJECTED"].includes(order.status) &&
+      (statusFilter === "ACTIVE" || order.status === statusFilter),
   );
   const pageCount = Math.max(1, Math.ceil(visibleOrders.length / ORDERS_PER_PAGE));
   const currentPage = Math.min(

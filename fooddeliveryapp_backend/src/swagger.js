@@ -427,7 +427,7 @@ paths["/api/orders"] = {
     parameters: [
       queryParameter("status", "Filter by an existing Order status", {
         type: "string",
-        enum: ["PENDING", "CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING", "COMPLETED", "CANCELLED", "REJECTED"]
+        enum: ["PENDING", "SCHEDULED", "PROCESSING", "CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING", "COMPLETED", "CANCELLED", "REJECTED"]
       })
     ],
     responses: recordResponse("Orders returned")
@@ -460,16 +460,17 @@ paths["/api/orders/quote"] = {
 paths["/api/orders/checkout"] = {
   post: {
     summary: "Create an Order from the authenticated Customer's current cart",
-    description: "Requires address_id and optional note or voucher_code. Prices, discount, delivery fee and total are calculated server-side.",
+    description: "Requires address_id and estimated_delivery_minutes, with optional note or voucher_code. Prices, discount, delivery fee and total are calculated server-side.",
     requestBody: {
       required: true,
       content: {
         "application/json": {
           schema: {
             type: "object",
-            required: ["address_id"],
+            required: ["address_id", "estimated_delivery_minutes"],
             properties: {
               address_id: { type: "integer", minimum: 1 },
+              estimated_delivery_minutes: { type: "integer", minimum: 1 },
               note: { type: "string", maxLength: 255 },
               voucher_code: { type: "string", minLength: 1, maxLength: 50 }
             },
@@ -479,6 +480,49 @@ paths["/api/orders/checkout"] = {
       }
     },
     responses: recordResponse("Order created", 201)
+  }
+};
+paths["/api/v1/delivery/available-slots"] = {
+  get: {
+    summary: "List feasible delivery slots for the authenticated Customer's cart",
+    description: "Uses OSRM road distance (maximum 10 km), configured average shipper speed (20 km/h by default), restaurant prep and buffer times, opening hours, and slot capacity. Requires address_id and date (restaurant-local YYYY-MM-DD).",
+    parameters: [
+      queryParameter("address_id", "Saved address belonging to the Customer", {
+        type: "integer",
+        minimum: 1
+      }),
+      queryParameter("date", "Requested restaurant-local delivery date (YYYY-MM-DD)", {
+        type: "string",
+        format: "date"
+      })
+    ],
+    responses: recordResponse("Available slots and route estimate returned")
+  }
+};
+paths["/api/v1/orders/schedule"] = {
+  post: {
+    summary: "Create a scheduled order from the authenticated Customer's cart",
+    description: "The selected slot is revalidated transactionally for capacity and minimum lead time. New orders remain SCHEDULED until the background worker activates them. COD is the only supported payment method.",
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["address_id", "date", "slot_id"],
+            properties: {
+              address_id: { type: "integer", minimum: 1 },
+              date: { type: "string", format: "date" },
+              slot_id: { type: "integer", minimum: 1 },
+              note: { type: "string", maxLength: 255 },
+              voucher_code: { type: "string", minLength: 1, maxLength: 50 }
+            },
+            additionalProperties: false
+          }
+        }
+      }
+    },
+    responses: recordResponse("Scheduled order created", 201)
   }
 };
 paths["/api/orders/{id}"] = {
@@ -498,11 +542,11 @@ paths["/api/orders/{id}/history"] = {
   }
 };
 for (const [action, summary] of [
-  ["confirm", "Confirm a PENDING order (owning Restaurant only)"],
+  ["confirm", "Legacy: propose delivery minutes for a PENDING order (owning Restaurant only)"],
   ["reject", "Reject a PENDING order (owning Restaurant only)"],
-  ["prepare", "Move a CONFIRMED order to PREPARING (owning Restaurant only)"],
+  ["prepare", "Move a scheduled, PROCESSING, or legacy order to PREPARING (owning Restaurant only)"],
   ["ready-for-pickup", "Move a PREPARING order to READY_FOR_PICKUP (owning Restaurant only)"],
-  ["cancel", "Cancel a PENDING order (owning Customer only)"]
+  ["cancel", "Cancel a PENDING or SCHEDULED order, or reject an unaccepted delivery estimate (owning Customer only)"]
 ]) {
   paths[`/api/orders/{id}/${action}`] = {
     parameters: [idParameter("order")],
@@ -514,7 +558,17 @@ for (const [action, summary] of [
           "application/json": {
             schema: {
               type: "object",
-              properties: { note: { type: "string", maxLength: 255 } },
+              ...(action === "confirm"
+                ? {
+                    required: ["estimated_delivery_minutes"],
+                    properties: {
+                      estimated_delivery_minutes: { type: "integer", minimum: 1 },
+                      note: { type: "string", maxLength: 255 }
+                    }
+                  }
+                : {
+                    properties: { note: { type: "string", maxLength: 255 } }
+                  }),
               additionalProperties: false
             }
           }
@@ -524,6 +578,21 @@ for (const [action, summary] of [
     }
   };
 }
+paths["/api/orders/{id}/accept-estimate"] = {
+  parameters: [idParameter("order")],
+  post: {
+    summary: "Accept the owning Customer's proposed delivery estimate",
+    requestBody: {
+      required: false,
+      content: {
+        "application/json": {
+          schema: { type: "object", additionalProperties: false }
+        }
+      }
+    },
+    responses: recordResponse("Delivery estimate accepted")
+  }
+};
 
 paths["/api/reviews"] = {
   get: {
@@ -849,7 +918,7 @@ for (const [path, summary, statuses] of [
   ["/api/admin/customers", "List Customers", ["ACTIVE", "LOCKED"]],
   ["/api/admin/restaurants", "List Restaurants", ["PENDING", "ACTIVE", "REJECTED", "SUSPENDED"]],
   ["/api/admin/shippers", "List Shippers", ["ACTIVE", "LOCKED"]],
-  ["/api/admin/orders", "Monitor Orders", ["PENDING", "CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING", "COMPLETED", "CANCELLED", "REJECTED"]]
+  ["/api/admin/orders", "Monitor Orders", ["PENDING", "SCHEDULED", "PROCESSING", "CONFIRMED", "PREPARING", "READY_FOR_PICKUP", "PICKED_UP", "DELIVERING", "COMPLETED", "CANCELLED", "REJECTED"]]
 ]) {
   const parameters = adminListParameters(statuses);
   if (path.endsWith("/orders")) {

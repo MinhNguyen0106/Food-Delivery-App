@@ -200,7 +200,7 @@ ownership from the database. A cart is limited to one Restaurant.
 
 |---|---|---|---|---|
 
-| `checkout({address_id,note?,voucher_code?})` | `POST /api/orders/checkout` | only the listed values | created order ID/code, backend totals, COD and voucher code | Customer |
+| `checkout({address_id,note?,voucher_code?})` | `POST /api/orders/checkout` | address, optional note and voucher; no delivery estimate at checkout | created order ID/code, backend totals, COD and voucher code | Customer |
 
 | `getOrders(status?)` | `GET /api/orders` | optional status query | own order list | Customer; Restaurant gets own orders |
 
@@ -266,11 +266,11 @@ Restaurant-facing calls share `restaurantService`, `categoryService`,
 
 | `getMyFoods(filters)` | `GET /api/foods` | optional food filters | only own Restaurant's foods |
 
-| `confirmOrder(id,note?)` | `POST /api/orders/{id}/confirm` | optional note | Own PENDING order |
+| `confirmOrder(id,estimatedDeliveryMinutes)` (legacy) | `POST /api/orders/{id}/confirm` | positive integer delivery estimate in minutes | Compatibility only; new Customer orders arrive scheduled and move to PROCESSING automatically |
 
 | `rejectOrder(id,note?)` | `POST /api/orders/{id}/reject` | optional note | Own PENDING order |
 
-| `prepareOrder(id,note?)` | `POST /api/orders/{id}/prepare` | optional note | Own CONFIRMED order |
+| `prepareOrder(id,note?)` | `POST /api/orders/{id}/prepare` | optional note | Own PROCESSING scheduled order or supported legacy order |
 
 | `markOrderReady(id,note?)` | `POST /api/orders/{id}/ready-for-pickup` | optional note | Own PREPARING order |
 

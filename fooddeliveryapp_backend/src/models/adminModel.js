@@ -208,7 +208,8 @@ module.exports = {
         order_record.restaurant_id, restaurant.name AS restaurant_name,
         order_record.address_id, address.receiver_name, address.receiver_phone,
         address.full_address, order_record.subtotal, order_record.delivery_fee,
-        order_record.discount, order_record.total_amount,
+        order_record.estimated_delivery_minutes, order_record.discount,
+        order_record.total_amount,
         order_status.status_name AS status, order_record.note,
         order_record.created_at, order_record.updated_at
        FROM orders order_record
@@ -294,7 +295,8 @@ module.exports = {
         order_record.customer_id, customer_profile.full_name AS customer_name,
         order_record.restaurant_id, restaurant.name AS restaurant_name,
         order_record.subtotal, order_record.delivery_fee, order_record.discount,
-        order_record.total_amount, order_status.status_name AS status,
+        order_record.estimated_delivery_minutes, order_record.total_amount,
+        order_status.status_name AS status,
         order_record.created_at, order_record.updated_at
        FROM orders order_record
        JOIN order_statuses order_status ON order_status.status_id = order_record.status_id

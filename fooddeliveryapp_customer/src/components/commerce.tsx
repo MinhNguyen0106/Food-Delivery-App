@@ -129,7 +129,10 @@ export function OrderCard({ order }: { order: DemoOrder }) {
             <Text style={styles.restaurantMetaText}>{order.createdAt} · {order.code || `#${order.id}`}</Text>
           </View>
         </View>
-        <StatusPill label={getOrderStatusLabel(order.status)} tone={tone} />
+        <StatusPill
+          label={getOrderStatusLabel(order.status)}
+          tone={tone}
+        />
       </View>
       {order.items.length > 0 ? (
         <View style={styles.orderItemSummary}>

@@ -9,8 +9,10 @@ import { usePrototype } from '@/providers/PrototypeProvider';
 import { colors } from '@/theme';
 
 const statuses: DemoOrderStatus[] = [
+  'SCHEDULED',
   'PENDING',
   'CONFIRMED',
+  'PROCESSING',
   'PREPARING',
   'READY_FOR_PICKUP',
   'PICKED_UP',

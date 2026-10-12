@@ -14,7 +14,6 @@ import {
   addCartItem as addCartItemRequest,
   cancelOrder as cancelOrderRequest,
   changePassword as changePasswordRequest,
-  checkout as checkoutRequest,
   clearCart as clearCartRequest,
   createReview as createReviewRequest,
   deleteAddress as deleteAddressRequest,
@@ -28,6 +27,7 @@ import {
   listVouchers,
   logout as logoutRequest,
   saveAddress as saveAddressRequest,
+  scheduleOrder as scheduleOrderRequest,
   updateCartItem,
   updateProfile as updateProfileRequest,
   type AddressInput,
@@ -68,7 +68,12 @@ interface PrototypeContextValue {
   selectVoucher: (code: string) => void;
   setMapLocation: (location: DemoMapLocation | null) => void;
   setDefaultAddress: (id: string) => Promise<boolean>;
-  placeOrder: (voucherCode?: string, note?: string) => Promise<CheckoutResult | null>;
+  placeOrder: (
+    voucherCode: string,
+    note: string,
+    date: string,
+    slotId: number,
+  ) => Promise<CheckoutResult | null>;
   cancelOrder: (id: string) => Promise<boolean>;
   addReview: (orderId: string, rating: number, comment: string) => Promise<boolean>;
   updateProfile: (profile: CustomerProfile) => Promise<boolean>;
@@ -305,12 +310,19 @@ export function PrototypeProvider({ children }: PropsWithChildren) {
     return saveAddress({ ...currentAddress, isDefault: true }, id);
   }, [addresses, saveAddress, token]);
 
-  const placeOrder = useCallback(async (voucherCode = '', note = ''): Promise<CheckoutResult | null> => {
+  const placeOrder = useCallback(async (
+    voucherCode: string,
+    note: string,
+    date: string,
+    slotId: number,
+  ): Promise<CheckoutResult | null> => {
     if (!token || !selectedAddressId) return null;
     let result: CheckoutResult;
     try {
-      result = await checkoutRequest(token, {
+      result = await scheduleOrderRequest(token, {
         address_id: Number(selectedAddressId),
+        date,
+        slot_id: slotId,
         ...(note.trim() ? { note: note.trim() } : {}),
         ...(voucherCode.trim() ? { voucher_code: voucherCode.trim() } : {}),
       });

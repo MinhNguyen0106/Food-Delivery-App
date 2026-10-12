@@ -49,6 +49,8 @@ app.use("/api/addresses", require("./router/addressRouter"));
 app.use("/api/carts", require("./router/cartsRouter"));
 app.use("/api/cart_items", require("./router/cart_itemsRouter"));
 app.use("/api/orders", require("./router/ordersRouter"));
+app.use("/api/v1/delivery", require("./router/scheduledDeliveryRouter"));
+app.use("/api/v1/orders", require("./router/scheduledOrdersRouter"));
 app.use("/api/deliveries", require("./router/deliveriesRouter"));
 app.use("/api/reviews", require("./router/reviewsRouter"));
 app.use("/api/vouchers", require("./router/vouchersRouter"));

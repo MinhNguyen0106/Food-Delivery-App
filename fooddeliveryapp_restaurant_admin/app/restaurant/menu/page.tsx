@@ -6,9 +6,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { ListPagination } from "@/components/shared/ListPagination";
 import { FoodFormModal } from "@/components/restaurant/FoodFormModal";
 import { categoryService } from "@/services/category.service";
-import {
-  restaurantMenuService,
-} from "@/services/restaurant/menu.service";
+import { restaurantMenuService } from "@/services/restaurant/menu.service";
 import { imageService } from "@/services/image.service";
 import type { Category } from "@/types/category";
 import type { CreateFoodInput, Food } from "@/types/food";
@@ -92,7 +90,10 @@ export default function MenuPage() {
       if (!status) {
         throw new Error(`Trạng thái món "${nextStatus}" chưa được cấu hình`);
       }
-      await restaurantMenuService.updateFoodStatus(food.foodId, status.status_id);
+      await restaurantMenuService.updateFoodStatus(
+        food.foodId,
+        status.status_id,
+      );
       const item = await restaurantMenuService.getFood(food.foodId);
       setFoods((current) =>
         current.map((value) => (value.foodId === item.foodId ? item : value)),
@@ -125,9 +126,13 @@ export default function MenuPage() {
     <section>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-orange-500">Vận hành</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-orange-500">
+            Vận hành
+          </p>
           <h1 className="mt-1 text-3xl font-bold text-slate-900">Thực đơn</h1>
-          <p className="mt-2 text-sm text-slate-500">Quản lý món ăn, giá bán và tình trạng phục vụ.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Quản lý món ăn, giá bán và tình trạng phục vụ.
+          </p>
         </div>
         <button
           onClick={() => setEditing(null)}
@@ -143,7 +148,9 @@ export default function MenuPage() {
       )}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 md:px-5">
-          <h2 className="text-sm font-semibold text-slate-800">Danh sách món</h2>
+          <h2 className="text-sm font-semibold text-slate-800">
+            Danh sách món
+          </h2>
           <span className="text-xs text-slate-500">{foods.length} món</span>
         </div>
         <div className="divide-y divide-slate-100">
@@ -172,11 +179,17 @@ export default function MenuPage() {
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">{food.name}</p>
-                  <p className="mt-1 text-xs text-slate-500">{food.category?.name ?? `Danh mục #${food.categoryId}`}</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {food.name}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {food.category?.name ?? `Danh mục #${food.categoryId}`}
+                  </p>
                 </div>
               </div>
-              <p className="min-w-28 text-sm font-semibold tabular-nums text-slate-800">{food.price.toLocaleString("vi-VN")}đ</p>
+              <p className="min-w-28 text-sm font-semibold tabular-nums text-slate-800">
+                {food.price.toLocaleString("vi-VN")}đ
+              </p>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={food.status} />
                 <label

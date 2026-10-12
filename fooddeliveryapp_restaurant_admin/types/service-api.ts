@@ -71,8 +71,10 @@ export interface FoodRecord {
 }
 
 export type OrderStatus =
+  | "SCHEDULED"
   | "PENDING"
   | "CONFIRMED"
+  | "PROCESSING"
   | "PREPARING"
   | "READY_FOR_PICKUP"
   | "PICKED_UP"
@@ -89,11 +91,15 @@ export interface OrderSummaryRecord {
   address_id: number;
   subtotal: number | string;
   delivery_fee: number | string;
+  estimated_delivery_minutes: number | null;
+  estimated_delivery_accepted_at: string | null;
   discount: number | string;
   total_amount: number | string;
   status: OrderStatus;
   note: string | null;
   created_at: string;
+  scheduled_for?: string | null;
+  scheduled_slot_end?: string | null;
   updated_at: string;
 }
 
@@ -116,6 +122,7 @@ export interface OrderHistoryRecord {
 
 export interface OrderDetailRecord extends OrderSummaryRecord {
   restaurant_name?: string;
+  customer_name?: string | null;
   address_name?: string;
   receiver_name?: string;
   receiver_phone?: string;
@@ -156,6 +163,8 @@ export interface CustomerAdminRecord {
   phone: string | null;
   date_of_birth: string | null;
   created_at: string;
+  scheduled_for?: string | null;
+  scheduled_slot_end?: string | null;
 }
 
 export interface RestaurantAdminRecord {
@@ -195,6 +204,8 @@ export interface AdminOrderRecord {
   restaurant_name: string;
   subtotal: number | string;
   delivery_fee: number | string;
+  estimated_delivery_minutes: number | null;
+  estimated_delivery_accepted_at: string | null;
   discount: number | string;
   total_amount: number | string;
   status: OrderStatus;

@@ -29,6 +29,15 @@ function parseDeliveryFeePerKm() {
   return value;
 }
 
+function parseAverageDeliverySpeedKmh() {
+  const rawValue = process.env.DELIVERY_AVERAGE_SPEED_KMH || '20';
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0 || value > 100) {
+    throw new Error('DELIVERY_AVERAGE_SPEED_KMH must be greater than 0 and at most 100');
+  }
+  return value;
+}
+
 module.exports = Object.freeze({
   port: parsePort('PORT', 3000),
   db: Object.freeze({
@@ -46,4 +55,6 @@ module.exports = Object.freeze({
     return value;
   })(),
   deliveryFeePerKm: parseDeliveryFeePerKm(),
+  deliveryAverageSpeedKmh: parseAverageDeliverySpeedKmh(),
+  maxDeliveryDistanceMeters: 10000,
 });

@@ -59,26 +59,51 @@ exports.cartItemId = (req, res, next) => {
   }
 };
 
+function validateCheckout(req, next) {
+  objectBody(req.body, ['address_id', 'note', 'voucher_code'], ['address_id']);
+  positiveInteger(req.body.address_id, 'address_id');
+  if (
+    req.body.note !== undefined &&
+    req.body.note !== null &&
+    (typeof req.body.note !== 'string' || req.body.note.length > 255)
+  ) {
+    invalid('note must be a string of at most 255 characters');
+  }
+  if (
+    req.body.voucher_code !== undefined &&
+    (
+      typeof req.body.voucher_code !== 'string' ||
+      req.body.voucher_code.trim().length < 1 ||
+      req.body.voucher_code.length > 50
+    )
+  ) {
+    invalid('voucher_code must be a non-empty string of at most 50 characters');
+  }
+  return next();
+}
+
 exports.checkout = (req, res, next) => {
   try {
-    objectBody(req.body, ['address_id', 'note', 'voucher_code'], ['address_id']);
-    positiveInteger(req.body.address_id, 'address_id');
+    return validateCheckout(req, next);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.estimateProposal = (req, res, next) => {
+  try {
+    objectBody(
+      req.body,
+      ['estimated_delivery_minutes', 'note'],
+      ['estimated_delivery_minutes']
+    );
+    positiveInteger(req.body.estimated_delivery_minutes, 'estimated_delivery_minutes');
     if (
       req.body.note !== undefined &&
       req.body.note !== null &&
       (typeof req.body.note !== 'string' || req.body.note.length > 255)
     ) {
       invalid('note must be a string of at most 255 characters');
-    }
-    if (
-      req.body.voucher_code !== undefined &&
-      (
-        typeof req.body.voucher_code !== 'string' ||
-        req.body.voucher_code.trim().length < 1 ||
-        req.body.voucher_code.length > 50
-      )
-    ) {
-      invalid('voucher_code must be a non-empty string of at most 50 characters');
     }
     return next();
   } catch (error) {
@@ -101,6 +126,8 @@ exports.orderList = (req, res, next) => {
       req.query.status !== undefined &&
       ![
         'PENDING',
+        'SCHEDULED',
+        'PROCESSING',
         'CONFIRMED',
         'PREPARING',
         'READY_FOR_PICKUP',

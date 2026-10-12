@@ -30,8 +30,13 @@ function mapOrder(
     orderCode: record.order_code,
     status: record.status,
     createdAt: record.created_at,
+    scheduledFor: "scheduled_for" in record ? record.scheduled_for ?? null : null,
     totalAmount: Number(record.total_amount),
     note: record.note,
+    customerName: "customer_name" in record ? record.customer_name ?? null : null,
+    receiverName: "receiver_name" in record ? record.receiver_name ?? null : null,
+    receiverPhone: "receiver_phone" in record ? record.receiver_phone ?? null : null,
+    deliveryAddress: "full_address" in record ? record.full_address ?? null : null,
     details: "items" in record ? record.items.map(mapItem) : [],
   };
 }
@@ -71,8 +76,15 @@ export const orderService = {
     );
   },
 
-  async confirmOrder(id: number, note?: string): Promise<OrderTransitionResult> {
-    return unwrapResponse(await transition(id, "confirm", note));
+  async confirmOrder(
+    id: number,
+    estimatedDeliveryMinutes: number,
+  ): Promise<OrderTransitionResult> {
+    return unwrapResponse(
+      await apiClient.post<OrderTransitionResult>(`/orders/${id}/confirm`, {
+        estimated_delivery_minutes: estimatedDeliveryMinutes,
+      }),
+    );
   },
 
   async rejectOrder(id: number, note?: string): Promise<OrderTransitionResult> {

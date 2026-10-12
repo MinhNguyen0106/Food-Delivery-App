@@ -2,8 +2,10 @@ import type { OrderStatus } from "@/types/order";
 import type { FoodStatus } from "@/types/food";
 
 const styles: Record<string, string> = {
+  SCHEDULED: "bg-cyan-100 text-cyan-800",
   PENDING: "bg-amber-100 text-amber-800",
   CONFIRMED: "bg-blue-100 text-blue-800",
+  PROCESSING: "bg-sky-100 text-sky-800",
   PREPARING: "bg-indigo-100 text-indigo-800",
   READY_FOR_PICKUP: "bg-purple-100 text-purple-800",
   PICKED_UP: "bg-cyan-100 text-cyan-800",
@@ -16,8 +18,10 @@ const styles: Record<string, string> = {
 };
 
 const labels: Record<string, string> = {
+  SCHEDULED: "Đã đặt lịch",
   PENDING: "Chờ xác nhận",
   CONFIRMED: "Đã xác nhận",
+  PROCESSING: "Đến giờ chuẩn bị",
   PREPARING: "Đang chuẩn bị",
   READY_FOR_PICKUP: "Sẵn sàng lấy",
   PICKED_UP: "Đã lấy món",

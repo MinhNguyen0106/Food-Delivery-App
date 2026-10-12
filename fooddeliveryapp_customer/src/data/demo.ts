@@ -43,8 +43,10 @@ export interface DemoAddress {
 }
 
 export type DemoOrderStatus =
+  | 'SCHEDULED'
   | 'PENDING'
   | 'CONFIRMED'
+  | 'PROCESSING'
   | 'PREPARING'
   | 'READY_FOR_PICKUP'
   | 'PICKED_UP'
@@ -64,6 +66,9 @@ export interface DemoOrder {
   subtotal?: number;
   deliveryFee?: number;
   discount?: number;
+  estimatedDeliveryMinutes?: number;
+  estimatedDeliveryAccepted?: boolean;
+  scheduledFor?: string;
   items: { foodId: number; quantity: number; unitPrice?: number; name?: string }[];
   addressId: string;
   addressName?: string;
@@ -335,8 +340,10 @@ export function getFood(id: number): Food {
 
 export function getOrderStatusLabel(status: DemoOrderStatus): string {
   const labels: Record<DemoOrderStatus, string> = {
+    SCHEDULED: 'Đã đặt lịch giao',
     PENDING: 'Chờ nhà hàng xác nhận',
-    CONFIRMED: 'Đã xác nhận',
+    CONFIRMED: 'Nhà hàng đã xác nhận',
+    PROCESSING: 'Nhà hàng đã nhận đơn',
     PREPARING: 'Đang chuẩn bị',
     READY_FOR_PICKUP: 'Sẵn sàng giao',
     PICKED_UP: 'Đã lấy món',

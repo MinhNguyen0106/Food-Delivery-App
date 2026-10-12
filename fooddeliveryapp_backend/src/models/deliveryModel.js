@@ -56,8 +56,10 @@ module.exports = {
     const [rows] = await connection.execute(
       `SELECT delivery.delivery_id, order_record.order_id, order_record.order_code,
         order_record.subtotal, order_record.delivery_fee, order_record.discount,
-        order_record.total_amount, order_record.note, order_record.created_at,
+        order_record.estimated_delivery_minutes, order_record.total_amount,
+        order_record.note, order_record.created_at,
         order_status.status_id AS status_id,
+        order_record.scheduled_for, order_record.scheduled_dispatch_at,
         delivery.status AS delivery_status,
         restaurant.name AS restaurant_name, restaurant.address AS restaurant_address,
         restaurant.phone AS restaurant_phone,
@@ -70,8 +72,15 @@ module.exports = {
        JOIN addresses address ON address.address_id = order_record.address_id
        WHERE delivery.status = 'REQUESTED'
          AND delivery.shipper_id IS NULL
-         AND order_status.status_name = 'READY_FOR_PICKUP'
-       ORDER BY order_record.created_at, order_record.order_id`
+         AND (
+           order_status.status_name = 'READY_FOR_PICKUP'
+           OR (
+             order_status.status_name IN ('PROCESSING', 'PREPARING')
+             AND order_record.scheduled_dispatch_at <= CURRENT_TIMESTAMP
+           )
+         )
+       ORDER BY COALESCE(order_record.scheduled_for, order_record.created_at),
+         order_record.order_id`
     );
     return rows;
   },
@@ -81,6 +90,7 @@ module.exports = {
       `SELECT delivery.delivery_id, delivery.order_id, delivery.status AS delivery_status,
         delivery.pickup_time, delivery.delivery_time, delivery.note,
         order_record.order_code, order_record.total_amount,
+        order_record.estimated_delivery_minutes,
         order_status.status_name AS order_status,
         restaurant.name AS restaurant_name, restaurant.address AS restaurant_address,
         restaurant.phone AS restaurant_phone,
@@ -106,7 +116,8 @@ module.exports = {
         delivery.pickup_time, delivery.delivery_time,
         COALESCE(delivery.note, order_record.note) AS note,
         order_record.order_code, order_record.subtotal, order_record.delivery_fee,
-        order_record.discount, order_record.total_amount,
+        order_record.discount, order_record.estimated_delivery_minutes,
+        order_record.total_amount,
         order_record.created_at, order_record.updated_at,
         order_status.status_name AS order_status,
         restaurant.name AS restaurant_name, restaurant.address AS restaurant_address,
@@ -166,6 +177,8 @@ module.exports = {
     const [rows] = await connection.execute(
       `SELECT order_record.order_id, order_record.customer_id,
         order_record.restaurant_id, order_record.total_amount,
+        order_record.scheduled_dispatch_at,
+        (order_record.scheduled_dispatch_at <= CURRENT_TIMESTAMP) AS scheduled_dispatch_due,
         order_status.status_name AS status
        FROM orders order_record
        JOIN order_statuses order_status ON order_status.status_id = order_record.status_id

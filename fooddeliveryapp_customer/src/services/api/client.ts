@@ -179,7 +179,16 @@ export function getErrorMessage(
       return error.code ? conflictMessages[error.code] ?? error.message : error.message;
     }
     if (error.status === 400) {
-      return 'Thông tin gửi lên chưa hợp lệ. Vui lòng kiểm tra lại các trường.';
+      switch (error.code) {
+        case 'SCHEDULED_DELIVERY_UNAVAILABLE':
+          return 'Khung giờ này vừa không còn khả dụng hoặc không đủ thời gian giao. Hãy tải lại và chọn khung giờ khác.';
+        case 'DELIVERY_DISTANCE_EXCEEDED':
+          return 'Địa chỉ nằm ngoài phạm vi giao hàng tối đa 10 km.';
+        case 'VALIDATION_ERROR':
+          return `Thông tin chưa hợp lệ: ${error.message}`;
+        default:
+          return error.message;
+      }
     }
     return error.message;
   }
